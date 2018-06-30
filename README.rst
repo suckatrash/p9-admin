@@ -1,0 +1,4 @@
+slice-admin
+===========
+
+Administer SLICE.

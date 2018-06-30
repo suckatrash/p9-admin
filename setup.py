@@ -17,13 +17,16 @@ setuptools.setup(
         "Intended Audience :: System Administrators",
         "License :: OSI Approved :: BSD License",
         "Natural Language :: English",
-        "Programming Language :: Python :: 3",
+        # pf9-saml-auth is 2.7 only
+        "Programming Language :: Python :: 2 :: Only",
     ],
 
     packages = setuptools.find_packages(),
     install_requires = [
         "click",
         "openstacksdk",
+        # Must be installed manually, since it's not on PyPi
+        "pf9-saml-auth"
     ],
 
     include_package_data = True,

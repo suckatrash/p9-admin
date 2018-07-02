@@ -8,13 +8,14 @@ import sys
 def set_up_logging(level=logging.WARNING):
     logging.captureWarnings(True)
 
+    format = "%(relativeCreated)7d %(name)s: %(message)s"
+
     handler = logging.StreamHandler(stream=sys.stdout)
     try:
         import colorlog
-        handler.setFormatter(colorlog.ColoredFormatter(
-            "%(log_color)s%(name)s: %(message)s"))
+        handler.setFormatter(colorlog.ColoredFormatter("%(log_color)s" + format))
     except ImportError:
-        handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+        handler.setFormatter(logging.Formatter(format))
 
     root = logging.getLogger()
     root.setLevel(level)

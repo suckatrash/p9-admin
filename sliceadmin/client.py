@@ -99,68 +99,51 @@ class OpenStackClient(object):
         try:
             project = self.keystone.projects.find(name=user.name)
             user.logger.info('Found project "%s" [%s]', project.name, project.id)
+            new_project = False
         except keystoneauth1.exceptions.NotFound:
             project = self.keystone.projects.create(name=user.name, domain=DOMAIN)
             user.logger.info('Created project "%s" [%s]', project.name, project.id)
+            new_project = True
 
         # Assign group to project with role
-        if self.check_role_assignment(self.ROLE.id, group=user.group, project=project):
-            user.logger.info('Found assignment to role "%s" [%s]', self.ROLE.name, self.ROLE.id)
+        if not new_project and self.check_role_assignment(self.ROLE.id, group=user.group, project=project):
+            user.logger.info('Found assignment to role "%s" [%s]',
+                self.ROLE.name, self.ROLE.id)
         else:
             self.keystone.roles.grant(self.ROLE.id, group=user.group, project=project)
-            user.logger.info('Granted access to role "%s" [%s]', self.ROLE.name, self.ROLE.id)
+            user.logger.info('Granted access to role "%s" [%s]',
+                self.ROLE.name, self.ROLE.id)
 
         # Create default network
-        networks = self.openstack.network.networks(project_id=project.id, name=NETWORK_NAME)
-        for network in networks:
-            user.logger.info('Found network "%s" [%s]', network.name, network.id)
-            break
-        else:
-            network = self.openstack.network.create_network(
-                project_id=project.id, name=NETWORK_NAME,
-                description="Default network")
-            user.logger.info('Created network "%s" [%s]', network.name, network.id)
+        network = None
+        if not new_project:
+            network = self.find_network(user, project, NETWORK_NAME)
+            new_network = False
+        if not network:
+            network = self.create_network(user, project, NETWORK_NAME)
+            new_network = True
 
         # Create default subnet
-        subnets = self.openstack.network.subnets(
-            project_id=project.id, network_id=network.id, name=SUBNET_NAME)
-        for subnet in subnets:
-            user.logger.info('Found subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
-            break
-        else:
-            subnet = self.openstack.network.create_subnet(
-                project_id=project.id, network_id=network.id, name=SUBNET_NAME,
-                ip_version=4, cidr=SUBNET_CIDR, description="Default subnet")
-            user.logger.info('Created subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
+        subnet = None
+        if not new_network:
+            subnet = self.find_subnet(user, project, network, SUBNET_NAME)
+            new_subnet = False
+        if not subnet:
+            subnet = self.create_subnet(user, project, network, SUBNET_NAME, SUBNET_CIDR)
+            new_subnet = True
 
         # Create default router to connect default subnet to external network
-        routers = self.openstack.network.routers(project_id=project.id, name=ROUTER_NAME)
-        for router in routers:
-            user.logger.info('Found router "%s" [%s]', router.name, router.id)
-            ### FIXME should this add the router to the external network? what if
-            ### it's already connected to a network? should this check all routers?
-            ### if router.external_gateway_info or router.external_gateway_info["network_id"]
-            break
-        else:
-            router = self.openstack.network.create_router(
-                project_id=project.id, name=ROUTER_NAME,
-                description="Default router",
-                external_gateway_info={"network_id": self.external_network.id})
-            user.logger.info('Created router "%s" [%s]', router.name, router.id)
+        ### FIXME should this add the router to the external network? what if
+        ### it's already connected to a network? should this check all routers?
+        ### if router.external_gateway_info or router.external_gateway_info["network_id"]
+        router = None
+        if not new_project:
+            router = self.find_router(user, project, ROUTER_NAME)
+        if not router:
+            router = self.create_router(user, project, network, subnet, ROUTER_NAME)
+            new_router = True
 
-            port = self.openstack.network.create_port(
-                project_id=project.id,
-                network_id=network.id,
-                fixed_ips=[
-                    {"subnet_id": subnet.id, "ip_address": subnet.gateway_ip}
-                ])
-            user.logger.info("Created port [%s] on tenant subnet", port.id)
-
-            self.openstack.network.add_interface_to_router(
-                router, subnet_id=subnet.id, port_id=port.id)
-            user.logger.info("Added port to router")
-
-        # Update default security group to allow external access
+        ### FIXME it seems to create the default security group automatically.
         security_groups = self.openstack.network.security_groups(
             project_id=project.id, name=SECURITY_GROUP_NAME)
         for security_group in security_groups:
@@ -174,8 +157,75 @@ class OpenStackClient(object):
             user.logger.info('Created security group "%s" [%s]',
                 security_group.name, security_group.id)
 
-        ### FIXME it seems to create the default security group automatically.
-        ### Should we just always correct the rules?
+        # Update default security group to allow external access
+        ### Should we always correct the rules?
+        sg_rule = None
+        if not new_project:
+            sg_rule = self.find_security_group_rule(user, security_group)
+        if not sg_rule:
+            sg_rule = self.create_security_group_rule(user, security_group)
+
+    def find_network(self, user, project, name):
+        networks = self.openstack.network.networks(project_id=project.id, name=name)
+        for network in networks:
+            user.logger.info('Found network "%s" [%s]', network.name, network.id)
+            return network
+        return None
+
+    def create_network(self, user, project, name):
+        network = self.openstack.network.create_network(
+            project_id=project.id, name=name,
+            description="Default network")
+        user.logger.info('Created network "%s" [%s]',
+            network.name, network.id)
+        return network
+
+    def find_subnet(self, user, project, network, name):
+        subnets = self.openstack.network.subnets(
+            project_id=project.id, network_id=network.id, name=name)
+        for subnet in subnets:
+            user.logger.info('Found subnet "%s" [%s]: %s',
+                subnet.name, subnet.id, subnet.cidr)
+            return subnet
+        return None
+
+    def create_subnet(self, user, project, network, name, cidr):
+        subnet = self.openstack.network.create_subnet(
+            project_id=project.id, network_id=network.id, name=name,
+            ip_version=4, cidr=cidr, description="Default subnet")
+        user.logger.info('Created subnet "%s" [%s]: %s',
+            subnet.name, subnet.id, subnet.cidr)
+        return subnet
+
+    def find_router(self, user, project, name):
+        routers = self.openstack.network.routers(project_id=project.id, name=name)
+        for router in routers:
+            user.logger.info('Found router "%s" [%s]', router.name, router.id)
+            return router
+        return None
+
+    def create_router(self, user, project, network, subnet, name):
+        router = self.openstack.network.create_router(
+            project_id=project.id, name=name,
+            description="Default router",
+            external_gateway_info={"network_id": self.external_network.id})
+        user.logger.info('Created router "%s" [%s]', router.name, router.id)
+
+        port = self.openstack.network.create_port(
+            project_id=project.id,
+            network_id=network.id,
+            fixed_ips=[
+                {"subnet_id": subnet.id, "ip_address": subnet.gateway_ip}
+            ])
+        user.logger.info("Created port [%s] on tenant subnet", port.id)
+
+        self.openstack.network.add_interface_to_router(
+            router, subnet_id=subnet.id, port_id=port.id)
+        user.logger.info("Added port to router")
+
+        return router
+
+    def find_security_group_rule(self, user, security_group):
         sg_rules = self.openstack.network.security_group_rules(
             security_group_id=security_group.id,
             direction="ingress",
@@ -184,15 +234,18 @@ class OpenStackClient(object):
             if sg_rule.remote_ip_prefix == "0.0.0.0/0":
                 user.logger.info('Found security group rule for "%s" [%s]',
                     sg_rule.remote_ip_prefix, sg_rule.id)
-                break
-        else:
-            sg_rule = self.openstack.network.create_security_group_rule(
-                security_group_id=security_group.id,
-                direction="ingress",
-                ethertype="IPv4",
-                remote_ip_prefix="0.0.0.0/0")
-            user.logger.info('Created security group rule for "%s" [%s]',
-                    sg_rule.remote_ip_prefix, sg_rule.id)
+                return sg_rule
+        return None
+
+    def create_security_group_rule(self, user, security_group):
+        sg_rule = self.openstack.network.create_security_group_rule(
+            security_group_id=security_group.id,
+            direction="ingress",
+            ethertype="IPv4",
+            remote_ip_prefix="0.0.0.0/0")
+        user.logger.info('Created security group rule for "%s" [%s]',
+            sg_rule.remote_ip_prefix, sg_rule.id)
+        return sg_rule
 
     def check_role_assignment(self, role, group, project):
         try:

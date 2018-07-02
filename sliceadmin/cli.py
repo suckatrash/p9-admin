@@ -91,6 +91,7 @@ class User(object):
         self.name = name
         self.email = email
         self.group = group
+        self.logger = logging.getLogger(name)
     def __str__(self):
         return "{name} <{email}>".format(**self.__dict__)
     def __repr__(self):
@@ -112,10 +113,10 @@ def ensure_group(keystone, user):
     group_name = "User: {}".format(user.email)
     try:
         group = keystone.groups.find(name=group_name)
-        logging.info('Found group "%s" [%s]', group.name, group.id)
+        user.logger.info('Found group "%s" [%s]', group.name, group.id)
     except keystoneauth1.exceptions.NotFound:
         group = keystone.groups.create(name=group_name, description=user.name)
-        logging.info('Created group "%s" [%s]', group.name, group.id)
+        user.logger.info('Created group "%s" [%s]', group.name, group.id)
 
     user.group = group
     return group
@@ -161,45 +162,45 @@ def ensure_project(keystone, openstack, external_network, user):
     # Create project
     try:
         project = keystone.projects.find(name=user.name)
-        logging.info('Found project "%s" [%s]', project.name, project.id)
+        user.logger.info('Found project "%s" [%s]', project.name, project.id)
     except keystoneauth1.exceptions.NotFound:
         project = keystone.projects.create(name=user.name, domain=DOMAIN)
-        logging.info('Created project "%s" [%s]', project.name, project.id)
+        user.logger.info('Created project "%s" [%s]', project.name, project.id)
 
     # Assign group to project with role
     if check_role_assignment(keystone, ROLE.id, group=user.group, project=project):
-        logging.info('Found assignment to role "%s" [%s]', ROLE.name, ROLE.id)
+        user.logger.info('Found assignment to role "%s" [%s]', ROLE.name, ROLE.id)
     else:
         keystone.roles.grant(ROLE.id, group=user.group, project=project)
-        logging.info('Granted access to role "%s" [%s]', ROLE.name, ROLE.id)
+        user.logger.info('Granted access to role "%s" [%s]', ROLE.name, ROLE.id)
 
     # Create default network
     networks = openstack.network.networks(project_id=project.id, name=NETWORK_NAME)
     for network in networks:
-        logging.info('Found network "%s" [%s]', network.name, network.id)
+        user.logger.info('Found network "%s" [%s]', network.name, network.id)
         break
     else:
         network = openstack.network.create_network(
             project_id=project.id, name=NETWORK_NAME,
             description="Default network")
-        logging.info('Created network "%s" [%s]', network.name, network.id)
+        user.logger.info('Created network "%s" [%s]', network.name, network.id)
 
     # Create default subnet
     subnets = openstack.network.subnets(
         project_id=project.id, network_id=network.id, name=SUBNET_NAME)
     for subnet in subnets:
-        logging.info('Found subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
+        user.logger.info('Found subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
         break
     else:
         subnet = openstack.network.create_subnet(
             project_id=project.id, network_id=network.id, name=SUBNET_NAME,
             ip_version=4, cidr=SUBNET_CIDR, description="Default subnet")
-        logging.info('Created subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
+        user.logger.info('Created subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
 
     # Create default router to connect default subnet to external network
     routers = openstack.network.routers(project_id=project.id, name=ROUTER_NAME)
     for router in routers:
-        logging.info('Found router "%s" [%s]', router.name, router.id)
+        user.logger.info('Found router "%s" [%s]', router.name, router.id)
         ### FIXME should this add the router to the external network? what if
         ### it's already connected to a network? should this check all routers?
         ### if router.external_gateway_info or router.external_gateway_info["network_id"]
@@ -209,7 +210,7 @@ def ensure_project(keystone, openstack, external_network, user):
             project_id=project.id, name=ROUTER_NAME,
             description="Default router",
             external_gateway_info={"network_id": external_network.id})
-        logging.info('Created router "%s" [%s]', router.name, router.id)
+        user.logger.info('Created router "%s" [%s]', router.name, router.id)
 
         port = openstack.network.create_port(
             project_id=project.id,
@@ -217,24 +218,24 @@ def ensure_project(keystone, openstack, external_network, user):
             fixed_ips=[
                 {"subnet_id": subnet.id, "ip_address": subnet.gateway_ip}
             ])
-        logging.info("Created port [%s] on tenant subnet", port.id)
+        user.logger.info("Created port [%s] on tenant subnet", port.id)
 
         openstack.network.add_interface_to_router(
             router, subnet_id=subnet.id, port_id=port.id)
-        logging.info("Added port to router")
+        user.logger.info("Added port to router")
 
     # Update default security group to allow external access
     security_groups = openstack.network.security_groups(
         project_id=project.id, name=SECURITY_GROUP_NAME)
     for security_group in security_groups:
-        logging.info('Found security group "%s" [%s]',
+        user.logger.info('Found security group "%s" [%s]',
             security_group.name, security_group.id)
         break
     else:
         security_group = openstack.network.create_security_group(
             name=SECURITY_GROUP_NAME, project_id=project.id,
             description="Default security group")
-        logging.info('Created security group "%s" [%s]',
+        user.logger.info('Created security group "%s" [%s]',
             security_group.name, security_group.id)
 
     ### FIXME it seems to create the default security group automatically.
@@ -245,7 +246,7 @@ def ensure_project(keystone, openstack, external_network, user):
         ethertype="IPv4")
     for sg_rule in sg_rules:
         if sg_rule.remote_ip_prefix == "0.0.0.0/0":
-            logging.info('Found security group rule for "%s" [%s]',
+            user.logger.info('Found security group rule for "%s" [%s]',
                 sg_rule.remote_ip_prefix, sg_rule.id)
             break
     else:
@@ -254,7 +255,7 @@ def ensure_project(keystone, openstack, external_network, user):
             direction="ingress",
             ethertype="IPv4",
             remote_ip_prefix="0.0.0.0/0")
-        logging.info('Created security group rule for "%s" [%s]',
+        user.logger.info('Created security group rule for "%s" [%s]',
                 sg_rule.remote_ip_prefix, sg_rule.id)
 
 def check_role_assignment(keystone, role, group, project):

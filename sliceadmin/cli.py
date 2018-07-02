@@ -1,19 +1,9 @@
-from __future__ import print_function
 import click
-from datetime import datetime
-import json
 import logging
-import keystoneclient.v3
-import keystoneauth1
-import openstack as openstackclient
+import openstack
 import os
-import pf9_saml_auth
+from sliceadmin import User, OpenStackClient
 import sys
-
-# Platform9 constants
-ROLE_NAME = "_member_"
-MAPPING_NAME = "idp1_mapping"
-DOMAIN = "default"
 
 def set_up_logging(level=logging.WARNING):
     logging.captureWarnings(True)
@@ -22,9 +12,9 @@ def set_up_logging(level=logging.WARNING):
     try:
         import colorlog
         handler.setFormatter(colorlog.ColoredFormatter(
-            "%(log_color)s%(name)s[%(processName)s]: %(message)s"))
+            "%(log_color)s%(name)s: %(message)s"))
     except ImportError:
-        handler.setFormatter(logging.Formatter("%(name)s[%(processName)s]: %(message)s"))
+        handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
 
     root = logging.getLogger()
     root.setLevel(level)
@@ -39,263 +29,86 @@ def main():
     except click.Abort as e:
         sys.exit(e)
 
-@click.command()
+@click.group()
 @click.option("--verbose", "-v", default=False, is_flag=True)
 @click.option("--debug", "-d", default=False, is_flag=True)
-@click.argument("name")
-@click.argument("email")
 @click.version_option()
-def cli(verbose, debug, name, email):
+def cli(verbose, debug, ):
     if debug:
         set_up_logging(logging.DEBUG)
-        openstackclient.enable_logging(debug=True)
+        openstack.enable_logging(debug=True)
     elif verbose:
         set_up_logging(logging.INFO)
-        openstackclient.enable_logging()
+        openstack.enable_logging()
     else:
         set_up_logging(logging.WARNING)
 
-    auth = pf9_saml_auth.V3Pf9SamlOkta(
-        auth_url=os.environ["OS_AUTH_URL"],
-        username=os.environ["OS_USERNAME"],
-        password=os.environ["OS_PASSWORD"],
-        protocol="saml2",
-        identity_provider="IDP1",
-        project_name=os.environ["OS_PROJECT_NAME"],
-        project_domain_name=os.environ["OS_PROJECT_DOMAIN_ID"],
-    )
-
-    session = keystoneauth1.session.Session(auth=auth)
-    keystone = keystoneclient.v3.client.Client(session=session)
-    openstack = openstackclient.connect(session=session)
-
-    try:
-        service_project = keystone.projects.find(name="service")
-    except keystoneauth1.exceptions.NotFound:
-        logging.critical('Could not find project "service"')
-        sys.exit(1)
-
-    external_network = openstack.network.find_network("external",
-        project_id=service_project.id)
-    if external_network is None:
-        logging.critical('Could not find network "external" in project "service"')
-        sys.exit(1)
+@cli.command("ensure-user")
+@click.argument("name")
+@click.argument("email")
+def ensure_user(name, email):
+    """Ensure that an Okta user is all set up"""
+    client = OpenStackClient()
 
     user = User(name, email)
-    ensure_group(keystone, user)
-    ensure_okta_mappings(keystone, [user])
-    ensure_project(keystone, openstack, external_network, user)
+    client.ensure_group(user)
+    client.ensure_okta_mappings([user])
+    client.ensure_project(user)
 
-class User(object):
-    def __init__(self, name, email, group=None):
-        self.name = name
-        self.email = email
-        self.group = group
-        self.logger = logging.getLogger(name)
-    def __str__(self):
-        return "{name} <{email}>".format(**self.__dict__)
-    def __repr__(self):
-        if self.group:
-            group_id = self.group.id
-        else:
-            group_id = "None"
+@cli.command("ensure-ldap-users")
+@click.argument("filter", metavar="LDAP-FILTER")
+@click.option("--uid", "-u", envvar='puppetpass_username')
+@click.option("--password", "-p",
+    prompt=not os.environ.has_key('puppetpass_password'),
+    hide_input=True,
+    default=os.environ.get('puppetpass_password', None))
+def ensure_ldap_users(filter, uid, password):
+    """Ensure that an Okta users are set up based on an LDAP filter"""
+    if not uid:
+        sys.exit("You must specify --uid USER to connect to LDAP")
 
-        return '{}("{}", {})'.format(
-            self.__class__.__name__,
-            str(self),
-            group_id)
+    users = get_ldap_users(filter, uid, password)
+    if not users:
+        return
 
-def ensure_group(keystone, user):
-    # Ensure that a group exists for a user
-    if user.group:
-        return group
+    client = OpenStackClient()
+    for user in users:
+        client.ensure_group(user)
 
-    group_name = "User: {}".format(user.email)
-    try:
-        group = keystone.groups.find(name=group_name)
-        user.logger.info('Found group "%s" [%s]', group.name, group.id)
-    except keystoneauth1.exceptions.NotFound:
-        group = keystone.groups.create(name=group_name, description=user.name)
-        user.logger.info('Created group "%s" [%s]', group.name, group.id)
-
-    user.group = group
-    return group
-
-def ensure_okta_mappings(keystone, users):
-    # Map SAML email attribute to groups
-    old_rules = keystone.federation.mappings.get(MAPPING_NAME).rules
-    new_rules = []
+    client.ensure_okta_mappings(users)
 
     for user in users:
-        for rule in old_rules:
-            if check_rule(rule, user.email, user.group.id):
-                logging.info('Found mapping of "%s" to group [%s]',
-                    user.email, user.group.id)
-                break
-        else:
-            new_rules.append(create_rule(user.email, user.group.id))
-            logging.info('Adding mapping of "%s" to group [%s]',
-                user.email, user.group.id)
+        client.ensure_project(user)
 
-    if new_rules:
-        backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
-        with open(backup, "w") as file:
-            file.write(json.dumps(old_rules, indent=2))
-        logging.info("Old mappings backed up to %s", backup)
+def get_ldap_users(filter, uid, password):
+    USERS_DN = "ou=users,dc=puppetlabs,dc=com"
+    LDAP_URL = "ldap://ldap.puppetlabs.com"
 
-        keystone.federation.mappings.update(MAPPING_NAME,
-            rules = old_rules + new_rules)
-        logging.info("New mappings saved")
-    else:
-        logging.info("Mappings are already up to date")
+    # LDAP is a pain to build. Don't fail unless we're actually using it.
+    import ldap
 
-def ensure_project(keystone, openstack, external_network, user):
-    ROLE = keystone.roles.find(name=ROLE_NAME)
+    bind_dn = "uid={},{}".format(uid, USERS_DN)
+    client = ldap.initialize(LDAP_URL)
+    client.start_tls_s()
 
-    # Puppet user default set up
-    NETWORK_NAME = "network1"
-    SUBNET_NAME = "subnet0"
-    SUBNET_CIDR="192.168.0.0/24"
-    ROUTER_NAME = "router0"
-    SECURITY_GROUP_NAME = "default"
-
-    # Create project
     try:
-        project = keystone.projects.find(name=user.name)
-        user.logger.info('Found project "%s" [%s]', project.name, project.id)
-    except keystoneauth1.exceptions.NotFound:
-        project = keystone.projects.create(name=user.name, domain=DOMAIN)
-        user.logger.info('Created project "%s" [%s]', project.name, project.id)
+        try:
+            client.simple_bind_s(bind_dn, password)
+        except ldap.LDAPError as e:
+            logging.critical("Could not bind to LDAP server '{}' as '{}': {}"
+                .format(LDAP_URL, bind_dn, e))
+            sys.exit(1)
 
-    # Assign group to project with role
-    if check_role_assignment(keystone, ROLE.id, group=user.group, project=project):
-        user.logger.info('Found assignment to role "%s" [%s]', ROLE.name, ROLE.id)
-    else:
-        keystone.roles.grant(ROLE.id, group=user.group, project=project)
-        user.logger.info('Granted access to role "%s" [%s]', ROLE.name, ROLE.id)
+        users = client.search_st(USERS_DN, ldap.SCOPE_SUBTREE, filter,
+            attrlist=["cn", "mail"], timeout=60)
+        if len(users) == 0:
+            logging.warn('Found 0 users in LDAP for filter "%s"', filter)
+            return []
 
-    # Create default network
-    networks = openstack.network.networks(project_id=project.id, name=NETWORK_NAME)
-    for network in networks:
-        user.logger.info('Found network "%s" [%s]', network.name, network.id)
-        break
-    else:
-        network = openstack.network.create_network(
-            project_id=project.id, name=NETWORK_NAME,
-            description="Default network")
-        user.logger.info('Created network "%s" [%s]', network.name, network.id)
+        logging.info('Found %d users in LDAP for filter "%s"',
+            len(users), filter)
 
-    # Create default subnet
-    subnets = openstack.network.subnets(
-        project_id=project.id, network_id=network.id, name=SUBNET_NAME)
-    for subnet in subnets:
-        user.logger.info('Found subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
-        break
-    else:
-        subnet = openstack.network.create_subnet(
-            project_id=project.id, network_id=network.id, name=SUBNET_NAME,
-            ip_version=4, cidr=SUBNET_CIDR, description="Default subnet")
-        user.logger.info('Created subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
-
-    # Create default router to connect default subnet to external network
-    routers = openstack.network.routers(project_id=project.id, name=ROUTER_NAME)
-    for router in routers:
-        user.logger.info('Found router "%s" [%s]', router.name, router.id)
-        ### FIXME should this add the router to the external network? what if
-        ### it's already connected to a network? should this check all routers?
-        ### if router.external_gateway_info or router.external_gateway_info["network_id"]
-        break
-    else:
-        router = openstack.network.create_router(
-            project_id=project.id, name=ROUTER_NAME,
-            description="Default router",
-            external_gateway_info={"network_id": external_network.id})
-        user.logger.info('Created router "%s" [%s]', router.name, router.id)
-
-        port = openstack.network.create_port(
-            project_id=project.id,
-            network_id=network.id,
-            fixed_ips=[
-                {"subnet_id": subnet.id, "ip_address": subnet.gateway_ip}
-            ])
-        user.logger.info("Created port [%s] on tenant subnet", port.id)
-
-        openstack.network.add_interface_to_router(
-            router, subnet_id=subnet.id, port_id=port.id)
-        user.logger.info("Added port to router")
-
-    # Update default security group to allow external access
-    security_groups = openstack.network.security_groups(
-        project_id=project.id, name=SECURITY_GROUP_NAME)
-    for security_group in security_groups:
-        user.logger.info('Found security group "%s" [%s]',
-            security_group.name, security_group.id)
-        break
-    else:
-        security_group = openstack.network.create_security_group(
-            name=SECURITY_GROUP_NAME, project_id=project.id,
-            description="Default security group")
-        user.logger.info('Created security group "%s" [%s]',
-            security_group.name, security_group.id)
-
-    ### FIXME it seems to create the default security group automatically.
-    ### Should we just always correct the rules?
-    sg_rules = openstack.network.security_group_rules(
-        security_group_id=security_group.id,
-        direction="ingress",
-        ethertype="IPv4")
-    for sg_rule in sg_rules:
-        if sg_rule.remote_ip_prefix == "0.0.0.0/0":
-            user.logger.info('Found security group rule for "%s" [%s]',
-                sg_rule.remote_ip_prefix, sg_rule.id)
-            break
-    else:
-        sg_rule = openstack.network.create_security_group_rule(
-            security_group_id=security_group.id,
-            direction="ingress",
-            ethertype="IPv4",
-            remote_ip_prefix="0.0.0.0/0")
-        user.logger.info('Created security group rule for "%s" [%s]',
-                sg_rule.remote_ip_prefix, sg_rule.id)
-
-def check_role_assignment(keystone, role, group, project):
-    try:
-        if keystone.roles.check(role, group=group, project=project):
-            return True
-    except keystoneauth1.exceptions.http.NotFound:
-        pass
-    return False
-
-def create_rule(email, group_id):
-    return {
-        'remote': [
-            {'type': 'FirstName'},
-            {'type': 'LastName'},
-            {'type': 'Email', 'regex': False, 'any_one_of': [email]}
-        ],
-        'local': [
-            {
-                'group': {'id': group_id},
-                'user': {'name': '{0} {1}'}
-            }
-        ]
-    }
-
-def check_rule(rule, email, group_id):
-    """
-    Check if a rule matches and email and group
-
-    See create_rule() for an example of what a rule looks like.
-    """
-
-    for match in rule["remote"]:
-        if match.get("type") == "Email" and email in match.get("any_one_of"):
-            break
-    else:
-        return False
-
-    for match in rule["local"]:
-        if match.get("group", dict()).get("id") == group_id:
-            return True
-
-    return False
+        # If they have multiple cns or mails... fuck it. Use the first.
+        return [User(u[1]['cn'][0], u[1]['mail'][0]) for u in users]
+    finally:
+        client.unbind()

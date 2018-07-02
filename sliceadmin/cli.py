@@ -10,6 +10,11 @@ import os
 import pf9_saml_auth
 import sys
 
+# Platform9 constants
+ROLE_NAME = "_member_"
+MAPPING_NAME = "idp1_mapping"
+DOMAIN = "default"
+
 def set_up_logging(level=logging.WARNING):
     logging.captureWarnings(True)
 
@@ -64,10 +69,7 @@ def cli(verbose, debug, name, email):
     keystone = keystoneclient.v3.client.Client(session=session)
     conn = openstack.connect(session=session)
 
-    # Platform9 constants
-    ROLE = keystone.roles.find(name="_member_")
-    MAPPING_NAME = "idp1_mapping"
-    DOMAIN = "default"
+    ROLE = keystone.roles.find(name=ROLE_NAME)
 
     # Puppet user default set up
     NETWORK_NAME = "network1"
@@ -88,6 +90,8 @@ def cli(verbose, debug, name, email):
         logging.critical('Could not find network "external" in project "service"')
         sys.exit(1)
 
+    group = ensure_group(keystone, email, name)
+
     # Create project
     try:
         project = keystone.projects.find(name=name)
@@ -96,40 +100,12 @@ def cli(verbose, debug, name, email):
         project = keystone.projects.create(name=name, domain=DOMAIN)
         logging.info('Created project "%s" [%s]', project.name, project.id)
 
-    # Create group
-    group_name = "User: {}".format(email)
-    try:
-        group = keystone.groups.find(name=group_name)
-        logging.info('Found group "%s" [%s]', group.name, group.id)
-    except keystoneauth1.exceptions.NotFound:
-        group = keystone.groups.create(name=group_name, description=name)
-        logging.info('Created group "%s" [%s]', group.name, group.id)
-
     # Assign group to project with role
     if check_role_assignment(keystone, ROLE.id, group=group, project=project):
         logging.info('Found assignment to role "%s" [%s]', ROLE.name, ROLE.id)
     else:
         keystone.roles.grant(ROLE.id, group=group, project=project)
         logging.info('Granted access to role "%s" [%s]', ROLE.name, ROLE.id)
-
-    # Map SAML email attribute to group
-    mapping = keystone.federation.mappings.get(MAPPING_NAME)
-    rules = mapping.rules
-
-    for rule in rules:
-        if check_rule(rule, email, group.id):
-            logging.info("Found mapping of email to group")
-            break
-    else:
-        backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
-        with open(backup, "w") as file:
-            file.write(json.dumps(rules, indent=2))
-
-        rules.append(create_rule(email, group.id))
-        logging.info("Adding mapping of email to group."
-            " Old mappings backed up to %s", backup)
-
-        keystone.federation.mappings.update(MAPPING_NAME, rules=rules)
 
     # Create default network
     networks = conn.network.networks(project_id=project.id, name=NETWORK_NAME)
@@ -215,6 +191,35 @@ def cli(verbose, debug, name, email):
         logging.info('Created security group rule for "%s" [%s]',
                 sg_rule.remote_ip_prefix, sg_rule.id)
 
+def ensure_group(keystone, email, name):
+    group_name = "User: {}".format(email)
+    try:
+        group = keystone.groups.find(name=group_name)
+        logging.info('Found group "%s" [%s]', group.name, group.id)
+    except keystoneauth1.exceptions.NotFound:
+        group = keystone.groups.create(name=group_name, description=name)
+        logging.info('Created group "%s" [%s]', group.name, group.id)
+
+    # Map SAML email attribute to group
+    mapping = keystone.federation.mappings.get(MAPPING_NAME)
+    rules = mapping.rules
+
+    for rule in rules:
+        if check_rule(rule, email, group.id):
+            logging.info("Found mapping of email to group")
+            break
+    else:
+        backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
+        with open(backup, "w") as file:
+            file.write(json.dumps(rules, indent=2))
+
+        rules.append(create_rule(email, group.id))
+        logging.info("Adding mapping of email to group."
+            " Old mappings backed up to %s", backup)
+
+        keystone.federation.mappings.update(MAPPING_NAME, rules=rules)
+
+    return group
 
 def check_role_assignment(keystone, role, group, project):
     try:

@@ -5,7 +5,7 @@ import json
 import logging
 import keystoneclient.v3
 import keystoneauth1
-import openstack
+import openstack as openstackclient
 import os
 import pf9_saml_auth
 import sys
@@ -48,10 +48,10 @@ def main():
 def cli(verbose, debug, name, email):
     if debug:
         set_up_logging(logging.DEBUG)
-        openstack.enable_logging(debug=True)
+        openstackclient.enable_logging(debug=True)
     elif verbose:
         set_up_logging(logging.INFO)
-        openstack.enable_logging()
+        openstackclient.enable_logging()
     else:
         set_up_logging(logging.WARNING)
 
@@ -67,8 +67,88 @@ def cli(verbose, debug, name, email):
 
     session = keystoneauth1.session.Session(auth=auth)
     keystone = keystoneclient.v3.client.Client(session=session)
-    conn = openstack.connect(session=session)
+    openstack = openstackclient.connect(session=session)
 
+    try:
+        service_project = keystone.projects.find(name="service")
+    except keystoneauth1.exceptions.NotFound:
+        logging.critical('Could not find project "service"')
+        sys.exit(1)
+
+    external_network = openstack.network.find_network("external",
+        project_id=service_project.id)
+    if external_network is None:
+        logging.critical('Could not find network "external" in project "service"')
+        sys.exit(1)
+
+    user = User(name, email)
+    ensure_group(keystone, user)
+    ensure_okta_mappings(keystone, [user])
+    ensure_project(keystone, openstack, external_network, user)
+
+class User(object):
+    def __init__(self, name, email, group=None):
+        self.name = name
+        self.email = email
+        self.group = group
+    def __str__(self):
+        return "{name} <{email}>".format(**self.__dict__)
+    def __repr__(self):
+        if self.group:
+            group_id = self.group.id
+        else:
+            group_id = "None"
+
+        return '{}("{}", {})'.format(
+            self.__class__.__name__,
+            str(self),
+            group_id)
+
+def ensure_group(keystone, user):
+    # Ensure that a group exists for a user
+    if user.group:
+        return group
+
+    group_name = "User: {}".format(user.email)
+    try:
+        group = keystone.groups.find(name=group_name)
+        logging.info('Found group "%s" [%s]', group.name, group.id)
+    except keystoneauth1.exceptions.NotFound:
+        group = keystone.groups.create(name=group_name, description=user.name)
+        logging.info('Created group "%s" [%s]', group.name, group.id)
+
+    user.group = group
+    return group
+
+def ensure_okta_mappings(keystone, users):
+    # Map SAML email attribute to groups
+    old_rules = keystone.federation.mappings.get(MAPPING_NAME).rules
+    new_rules = []
+
+    for user in users:
+        for rule in old_rules:
+            if check_rule(rule, user.email, user.group.id):
+                logging.info('Found mapping of "%s" to group [%s]',
+                    user.email, user.group.id)
+                break
+        else:
+            new_rules.append(create_rule(user.email, user.group.id))
+            logging.info('Adding mapping of "%s" to group [%s]',
+                user.email, user.group.id)
+
+    if new_rules:
+        backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
+        with open(backup, "w") as file:
+            file.write(json.dumps(old_rules, indent=2))
+        logging.info("Old mappings backed up to %s", backup)
+
+        keystone.federation.mappings.update(MAPPING_NAME,
+            rules = old_rules + new_rules)
+        logging.info("New mappings saved")
+    else:
+        logging.info("Mappings are already up to date")
+
+def ensure_project(keystone, openstack, external_network, user):
     ROLE = keystone.roles.find(name=ROLE_NAME)
 
     # Puppet user default set up
@@ -78,60 +158,46 @@ def cli(verbose, debug, name, email):
     ROUTER_NAME = "router0"
     SECURITY_GROUP_NAME = "default"
 
-    try:
-        service_project = keystone.projects.find(name="service")
-    except keystoneauth1.exceptions.NotFound:
-        logging.critical('Could not find project "service"')
-        sys.exit(1)
-
-    external_network = conn.network.find_network("external",
-        project_id=service_project.id)
-    if external_network is None:
-        logging.critical('Could not find network "external" in project "service"')
-        sys.exit(1)
-
-    group = ensure_group(keystone, email, name)
-
     # Create project
     try:
-        project = keystone.projects.find(name=name)
+        project = keystone.projects.find(name=user.name)
         logging.info('Found project "%s" [%s]', project.name, project.id)
     except keystoneauth1.exceptions.NotFound:
-        project = keystone.projects.create(name=name, domain=DOMAIN)
+        project = keystone.projects.create(name=user.name, domain=DOMAIN)
         logging.info('Created project "%s" [%s]', project.name, project.id)
 
     # Assign group to project with role
-    if check_role_assignment(keystone, ROLE.id, group=group, project=project):
+    if check_role_assignment(keystone, ROLE.id, group=user.group, project=project):
         logging.info('Found assignment to role "%s" [%s]', ROLE.name, ROLE.id)
     else:
-        keystone.roles.grant(ROLE.id, group=group, project=project)
+        keystone.roles.grant(ROLE.id, group=user.group, project=project)
         logging.info('Granted access to role "%s" [%s]', ROLE.name, ROLE.id)
 
     # Create default network
-    networks = conn.network.networks(project_id=project.id, name=NETWORK_NAME)
+    networks = openstack.network.networks(project_id=project.id, name=NETWORK_NAME)
     for network in networks:
         logging.info('Found network "%s" [%s]', network.name, network.id)
         break
     else:
-        network = conn.network.create_network(
+        network = openstack.network.create_network(
             project_id=project.id, name=NETWORK_NAME,
             description="Default network")
         logging.info('Created network "%s" [%s]', network.name, network.id)
 
     # Create default subnet
-    subnets = conn.network.subnets(
+    subnets = openstack.network.subnets(
         project_id=project.id, network_id=network.id, name=SUBNET_NAME)
     for subnet in subnets:
         logging.info('Found subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
         break
     else:
-        subnet = conn.network.create_subnet(
+        subnet = openstack.network.create_subnet(
             project_id=project.id, network_id=network.id, name=SUBNET_NAME,
             ip_version=4, cidr=SUBNET_CIDR, description="Default subnet")
         logging.info('Created subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
 
     # Create default router to connect default subnet to external network
-    routers = conn.network.routers(project_id=project.id, name=ROUTER_NAME)
+    routers = openstack.network.routers(project_id=project.id, name=ROUTER_NAME)
     for router in routers:
         logging.info('Found router "%s" [%s]', router.name, router.id)
         ### FIXME should this add the router to the external network? what if
@@ -139,13 +205,13 @@ def cli(verbose, debug, name, email):
         ### if router.external_gateway_info or router.external_gateway_info["network_id"]
         break
     else:
-        router = conn.network.create_router(
+        router = openstack.network.create_router(
             project_id=project.id, name=ROUTER_NAME,
             description="Default router",
             external_gateway_info={"network_id": external_network.id})
         logging.info('Created router "%s" [%s]', router.name, router.id)
 
-        port = conn.network.create_port(
+        port = openstack.network.create_port(
             project_id=project.id,
             network_id=network.id,
             fixed_ips=[
@@ -153,19 +219,19 @@ def cli(verbose, debug, name, email):
             ])
         logging.info("Created port [%s] on tenant subnet", port.id)
 
-        conn.network.add_interface_to_router(
+        openstack.network.add_interface_to_router(
             router, subnet_id=subnet.id, port_id=port.id)
         logging.info("Added port to router")
 
     # Update default security group to allow external access
-    security_groups = conn.network.security_groups(
+    security_groups = openstack.network.security_groups(
         project_id=project.id, name=SECURITY_GROUP_NAME)
     for security_group in security_groups:
         logging.info('Found security group "%s" [%s]',
             security_group.name, security_group.id)
         break
     else:
-        security_group = conn.network.create_security_group(
+        security_group = openstack.network.create_security_group(
             name=SECURITY_GROUP_NAME, project_id=project.id,
             description="Default security group")
         logging.info('Created security group "%s" [%s]',
@@ -173,7 +239,7 @@ def cli(verbose, debug, name, email):
 
     ### FIXME it seems to create the default security group automatically.
     ### Should we just always correct the rules?
-    sg_rules = conn.network.security_group_rules(
+    sg_rules = openstack.network.security_group_rules(
         security_group_id=security_group.id,
         direction="ingress",
         ethertype="IPv4")
@@ -183,43 +249,13 @@ def cli(verbose, debug, name, email):
                 sg_rule.remote_ip_prefix, sg_rule.id)
             break
     else:
-        sg_rule = conn.network.create_security_group_rule(
+        sg_rule = openstack.network.create_security_group_rule(
             security_group_id=security_group.id,
             direction="ingress",
             ethertype="IPv4",
             remote_ip_prefix="0.0.0.0/0")
         logging.info('Created security group rule for "%s" [%s]',
                 sg_rule.remote_ip_prefix, sg_rule.id)
-
-def ensure_group(keystone, email, name):
-    group_name = "User: {}".format(email)
-    try:
-        group = keystone.groups.find(name=group_name)
-        logging.info('Found group "%s" [%s]', group.name, group.id)
-    except keystoneauth1.exceptions.NotFound:
-        group = keystone.groups.create(name=group_name, description=name)
-        logging.info('Created group "%s" [%s]', group.name, group.id)
-
-    # Map SAML email attribute to group
-    mapping = keystone.federation.mappings.get(MAPPING_NAME)
-    rules = mapping.rules
-
-    for rule in rules:
-        if check_rule(rule, email, group.id):
-            logging.info("Found mapping of email to group")
-            break
-    else:
-        backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
-        with open(backup, "w") as file:
-            file.write(json.dumps(rules, indent=2))
-
-        rules.append(create_rule(email, group.id))
-        logging.info("Adding mapping of email to group."
-            " Old mappings backed up to %s", backup)
-
-        keystone.federation.mappings.update(MAPPING_NAME, rules=rules)
-
-    return group
 
 def check_role_assignment(keystone, role, group, project):
     try:

@@ -64,13 +64,12 @@ def cli(verbose, debug, name, email):
     keystone = keystoneclient.v3.client.Client(session=session)
     conn = openstack.connect(session=session)
 
-    ### FIXME
-    ### HEAT ROLE?
-    ### default security group?
-    ROLE_ID = "9fe2ff9ee4384b1894a90878d3e92bab"
+    # Platform9 constants
+    ROLE = keystone.roles.find(name="_member_")
     MAPPING_NAME = "idp1_mapping"
     DOMAIN = "default"
 
+    # Puppet user default set up
     NETWORK_NAME = "network1"
     SUBNET_NAME = "subnet0"
     SUBNET_CIDR="192.168.0.0/24"
@@ -107,11 +106,11 @@ def cli(verbose, debug, name, email):
         logging.info('Created group "%s" [%s]', group.name, group.id)
 
     # Assign group to project with role
-    if check_role_assignment(keystone, ROLE_ID, group=group, project=project):
-        logging.info("Found role assignment")
+    if check_role_assignment(keystone, ROLE.id, group=group, project=project):
+        logging.info('Found assignment to role "%s" [%s]', ROLE.name, ROLE.id)
     else:
-        keystone.roles.grant(ROLE_ID, group=group, project=project)
-        logging.info("Granted access to role [%s]", ROLE_ID)
+        keystone.roles.grant(ROLE.id, group=group, project=project)
+        logging.info('Granted access to role "%s" [%s]', ROLE.name, ROLE.id)
 
     # Map SAML email attribute to group
     mapping = keystone.federation.mappings.get(MAPPING_NAME)
@@ -132,6 +131,7 @@ def cli(verbose, debug, name, email):
 
         keystone.federation.mappings.update(MAPPING_NAME, rules=rules)
 
+    # Create default network
     networks = conn.network.networks(project_id=project.id, name=NETWORK_NAME)
     for network in networks:
         logging.info('Found network "%s" [%s]', network.name, network.id)
@@ -142,6 +142,7 @@ def cli(verbose, debug, name, email):
             description="Default network")
         logging.info('Created network "%s" [%s]', network.name, network.id)
 
+    # Create default subnet
     subnets = conn.network.subnets(
         project_id=project.id, network_id=network.id, name=SUBNET_NAME)
     for subnet in subnets:
@@ -153,6 +154,7 @@ def cli(verbose, debug, name, email):
             ip_version=4, cidr=SUBNET_CIDR, description="Default subnet")
         logging.info('Created subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
 
+    # Create default router to connect default subnet to external network
     routers = conn.network.routers(project_id=project.id, name=ROUTER_NAME)
     for router in routers:
         logging.info('Found router "%s" [%s]', router.name, router.id)
@@ -179,6 +181,7 @@ def cli(verbose, debug, name, email):
             router, subnet_id=subnet.id, port_id=port.id)
         logging.info("Added port to router")
 
+    # Update default security group to allow external access
     security_groups = conn.network.security_groups(
         project_id=project.id, name=SECURITY_GROUP_NAME)
     for security_group in security_groups:
@@ -211,10 +214,6 @@ def cli(verbose, debug, name, email):
             remote_ip_prefix="0.0.0.0/0")
         logging.info('Created security group rule for "%s" [%s]',
                 sg_rule.remote_ip_prefix, sg_rule.id)
-
-
-#     import code ; code.interact(local=locals())
-
 
 
 def check_role_assignment(keystone, role, group, project):

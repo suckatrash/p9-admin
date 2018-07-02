@@ -65,9 +65,29 @@ def cli(verbose, debug, name, email):
     conn = openstack.connect(session=session)
 
     ### FIXME
+    ### HEAT ROLE?
+    ### default security group?
     ROLE_ID = "9fe2ff9ee4384b1894a90878d3e92bab"
     MAPPING_NAME = "idp1_mapping"
     DOMAIN = "default"
+
+    NETWORK_NAME = "network1"
+    SUBNET_NAME = "subnet0"
+    SUBNET_CIDR="192.168.0.0/24"
+    ROUTER_NAME = "router0"
+    SECURITY_GROUP_NAME = "default"
+
+    try:
+        service_project = keystone.projects.find(name="service")
+    except keystoneauth1.exceptions.NotFound:
+        logging.critical('Could not find project "service"')
+        sys.exit(1)
+
+    external_network = conn.network.find_network("external",
+        project_id=service_project.id)
+    if external_network is None:
+        logging.critical('Could not find network "external" in project "service"')
+        sys.exit(1)
 
     # Create project
     try:
@@ -87,15 +107,7 @@ def cli(verbose, debug, name, email):
         logging.info('Created group "%s" [%s]', group.name, group.id)
 
     # Assign group to project with role
-    def role_check(keystone, role, group, project):
-        try:
-            if keystone.roles.check(ROLE_ID, group=group, project=project):
-                return True
-        except keystoneauth1.exceptions.http.NotFound:
-            pass
-        return False
-
-    if role_check(keystone, ROLE_ID, group=group, project=project):
+    if check_role_assignment(keystone, ROLE_ID, group=group, project=project):
         logging.info("Found role assignment")
     else:
         keystone.roles.grant(ROLE_ID, group=group, project=project)
@@ -119,6 +131,99 @@ def cli(verbose, debug, name, email):
             " Old mappings backed up to %s", backup)
 
         keystone.federation.mappings.update(MAPPING_NAME, rules=rules)
+
+    networks = conn.network.networks(project_id=project.id, name=NETWORK_NAME)
+    for network in networks:
+        logging.info('Found network "%s" [%s]', network.name, network.id)
+        break
+    else:
+        network = conn.network.create_network(
+            project_id=project.id, name=NETWORK_NAME,
+            description="Default network")
+        logging.info('Created network "%s" [%s]', network.name, network.id)
+
+    subnets = conn.network.subnets(
+        project_id=project.id, network_id=network.id, name=SUBNET_NAME)
+    for subnet in subnets:
+        logging.info('Found subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
+        break
+    else:
+        subnet = conn.network.create_subnet(
+            project_id=project.id, network_id=network.id, name=SUBNET_NAME,
+            ip_version=4, cidr=SUBNET_CIDR, description="Default subnet")
+        logging.info('Created subnet "%s" [%s]: %s', subnet.name, subnet.id, subnet.cidr)
+
+    routers = conn.network.routers(project_id=project.id, name=ROUTER_NAME)
+    for router in routers:
+        logging.info('Found router "%s" [%s]', router.name, router.id)
+        ### FIXME should this add the router to the external network? what if
+        ### it's already connected to a network? should this check all routers?
+        ### if router.external_gateway_info or router.external_gateway_info["network_id"]
+        break
+    else:
+        router = conn.network.create_router(
+            project_id=project.id, name=ROUTER_NAME,
+            description="Default router",
+            external_gateway_info={"network_id": external_network.id})
+        logging.info('Created router "%s" [%s]', router.name, router.id)
+
+        port = conn.network.create_port(
+            project_id=project.id,
+            network_id=network.id,
+            fixed_ips=[
+                {"subnet_id": subnet.id, "ip_address": subnet.gateway_ip}
+            ])
+        logging.info("Created port [%s] on tenant subnet", port.id)
+
+        conn.network.add_interface_to_router(
+            router, subnet_id=subnet.id, port_id=port.id)
+        logging.info("Added port to router")
+
+    security_groups = conn.network.security_groups(
+        project_id=project.id, name=SECURITY_GROUP_NAME)
+    for security_group in security_groups:
+        logging.info('Found security group "%s" [%s]',
+            security_group.name, security_group.id)
+        break
+    else:
+        security_group = conn.network.create_security_group(
+            name=SECURITY_GROUP_NAME, project_id=project.id,
+            description="Default security group")
+        logging.info('Created security group "%s" [%s]',
+            security_group.name, security_group.id)
+
+    ### FIXME it seems to create the default security group automatically.
+    ### Should we just always correct the rules?
+    sg_rules = conn.network.security_group_rules(
+        security_group_id=security_group.id,
+        direction="ingress",
+        ethertype="IPv4")
+    for sg_rule in sg_rules:
+        if sg_rule.remote_ip_prefix == "0.0.0.0/0":
+            logging.info('Found security group rule for "%s" [%s]',
+                sg_rule.remote_ip_prefix, sg_rule.id)
+            break
+    else:
+        sg_rule = conn.network.create_security_group_rule(
+            security_group_id=security_group.id,
+            direction="ingress",
+            ethertype="IPv4",
+            remote_ip_prefix="0.0.0.0/0")
+        logging.info('Created security group rule for "%s" [%s]',
+                sg_rule.remote_ip_prefix, sg_rule.id)
+
+
+#     import code ; code.interact(local=locals())
+
+
+
+def check_role_assignment(keystone, role, group, project):
+    try:
+        if keystone.roles.check(role, group=group, project=project):
+            return True
+    except keystoneauth1.exceptions.http.NotFound:
+        pass
+    return False
 
 def create_rule(email, group_id):
     return {

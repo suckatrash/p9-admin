@@ -90,6 +90,7 @@ def get_ldap_users(filter, uid, password):
     bind_dn = "uid={},{}".format(uid, USERS_DN)
     client = ldap.initialize(LDAP_URL)
     client.start_tls_s()
+    count = 1
 
     try:
         try:
@@ -108,7 +109,26 @@ def get_ldap_users(filter, uid, password):
         logging.info('Found %d users in LDAP for filter "%s"',
             len(users), filter)
 
-        # If they have multiple cns or mails... fuck it. Use the first.
-        return [User(u[1]['cn'][0], u[1]['mail'][0]) for u in users]
+        user_objects = []
+        for dn, attrs in users:
+            cns = attrs.get("cn", list())
+            mails = attrs.get("mail", list())
+
+            if not cns:
+                logging.error("Skipping %s: no cn attribute", dn)
+                continue
+            if not mails:
+                logging.error("Skipping %s: no mail attribute", dn)
+                continue
+
+            if len(cns) > 1:
+                logging.warn("%s has %d cn values", dn, len(mails))
+            if len(mails) > 1:
+                logging.warn("%s has %d mail values", dn, len(mails))
+
+            user_objects.append(User(cns[0], mails[0], number=count))
+            count += 1
+
+        return user_objects
     finally:
         client.unbind()

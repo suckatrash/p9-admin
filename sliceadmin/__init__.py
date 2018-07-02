@@ -2,11 +2,17 @@ import logging
 from sliceadmin.client import OpenStackClient
 
 class User(object):
-    def __init__(self, name, email, group=None):
+    def __init__(self, name, email, group=None, number=None):
         self.name = name
         self.email = email
         self.group = group
-        self.logger = logging.getLogger(name)
+
+        if number == None:
+            logger_name = self.name
+        else:
+            logger_name = "#{} {}".format(number, self.name)
+
+        self.logger = logging.getLogger(logger_name)
 
     def __str__(self):
         return "{name} <{email}>".format(**self.__dict__)

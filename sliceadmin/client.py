@@ -42,19 +42,30 @@ class OpenStackClient(object):
             sys.exit(1)
 
         self.ROLE = self.keystone.roles.find(name=ROLE_NAME)
+        self._groups = None
+
+    def groups(self):
+        if self._groups == None:
+            self._groups = self.keystone.groups.list()
+            logging.info('Retrieved %d groups', len(self._groups))
+
+        return self._groups
 
     def ensure_group(self, user):
         # Ensure that a group exists for a user
         if user.group:
             return group
 
+        ### This optimizes for bulk add. Should we have a separate path when the number of users is <N?
         group_name = "User: {}".format(user.email)
-        try:
-            group = self.keystone.groups.find(name=group_name)
-            user.logger.info('Found group "%s" [%s]', group.name, group.id)
-        except keystoneauth1.exceptions.NotFound:
+        for group in self.groups():
+            if group.name == group_name:
+                user.logger.info('Found group "%s" [%s]', group.name, group.id)
+                break
+        else:
             group = self.keystone.groups.create(name=group_name, description=user.name)
             user.logger.info('Created group "%s" [%s]', group.name, group.id)
+            self._groups.append(group)
 
         user.group = group
         return group

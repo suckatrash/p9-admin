@@ -37,7 +37,7 @@ def main():
 def cli(verbose, debug, ):
     if debug:
         set_up_logging(logging.DEBUG)
-        openstack.enable_logging(debug=True)
+        openstack.enable_logging(debug=True, http_debug=True)
     elif verbose:
         set_up_logging(logging.INFO)
         openstack.enable_logging()

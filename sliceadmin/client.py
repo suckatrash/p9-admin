@@ -1,4 +1,6 @@
+from __future__ import print_function
 from datetime import datetime
+import functools
 import json
 import keystoneclient.v3
 import keystoneauth1
@@ -13,43 +15,78 @@ ROLE_NAME = "_member_"
 MAPPING_NAME = "idp1_mapping"
 DOMAIN = "default"
 
+def memoize(obj):
+    cache = obj.cache = {}
+
+    @functools.wraps(obj)
+    def memoizer(*args):
+        if args not in cache:
+            cache[args] = obj(*args)
+        return cache[args]
+    return memoizer
+
 class OpenStackClient(object):
     def __init__(self):
-        auth = pf9_saml_auth.V3Pf9SamlOkta(
-            auth_url=os.environ["OS_AUTH_URL"],
-            username=os.environ["OS_USERNAME"],
-            password=os.environ["OS_PASSWORD"],
-            protocol="saml2",
-            identity_provider="IDP1",
-            project_name=os.environ["OS_PROJECT_NAME"],
-            project_domain_name=os.environ["OS_PROJECT_DOMAIN_ID"],
-        )
+        if os.environ.get("OS_PROTOCOL", "password") == "SAML":
+            logging.info('Authenticating as "%s" on project "%s" with SAML',
+                os.environ["OS_USERNAME"], os.environ["OS_PROJECT_NAME"])
+            auth = pf9_saml_auth.V3Pf9SamlOkta(
+                auth_url=os.environ["OS_AUTH_URL"],
+                username=os.environ["OS_USERNAME"],
+                password=os.environ["OS_PASSWORD"],
+                project_name=os.environ["OS_PROJECT_NAME"],
+                project_domain_name=os.environ["OS_PROJECT_DOMAIN_ID"],
+                protocol="saml2",
+                identity_provider="IDP1",
+            )
+        else:
+            logging.info('Authenticating as "%s" on project "%s" with password',
+                os.environ["OS_USERNAME"], os.environ["OS_PROJECT_NAME"])
+            auth = keystoneauth1.identity.v3.Password(
+                auth_url=os.environ["OS_AUTH_URL"],
+                username=os.environ["OS_USERNAME"],
+                password=os.environ["OS_PASSWORD"],
+                user_domain_id=os.environ["OS_USER_DOMAIN_ID"],
+                project_name=os.environ["OS_PROJECT_NAME"],
+                project_domain_id=os.environ["OS_PROJECT_DOMAIN_ID"],
+            )
 
         session = keystoneauth1.session.Session(auth=auth)
         self.keystone = keystoneclient.v3.client.Client(session=session)
         self.openstack = openstack.connect(session=session)
 
+    @memoize
+    def member_role(self):
+        return self.keystone.roles.find(name=ROLE_NAME)
+
+    @memoize
+    def service_project(self):
         try:
-            self.service_project = self.keystone.projects.find(name="service")
+            project = self.keystone.projects.find(name="service")
+            logging.info('Found "%s" project [%s]', project.name, project.id)
         except keystoneauth1.exceptions.NotFound:
             logging.critical('Could not find project "service"')
             sys.exit(1)
 
-        self.external_network = self.openstack.network.find_network("external",
-            project_id=self.service_project.id)
-        if self.external_network is None:
-            logging.critical('Could not find network "external" in project "service"')
+        return project
+
+    @memoize
+    def external_network(self):
+        name = "external"
+        network = self.openstack.network.find_network(
+            name, project_id=self.service_project().id)
+        if network is None:
+            logging.critical('Could not find network "%s" in project "%s"',
+                name, self.service_project().name)
             sys.exit(1)
 
-        self.ROLE = self.keystone.roles.find(name=ROLE_NAME)
-        self._groups = None
+        return network
 
+    @memoize
     def groups(self):
-        if self._groups == None:
-            self._groups = self.keystone.groups.list()
-            logging.info('Retrieved %d groups', len(self._groups))
-
-        return self._groups
+        groups = self.keystone.groups.list()
+        logging.info('Retrieved %d groups', len(groups))
+        return groups
 
     def ensure_group(self, user):
         # Ensure that a group exists for a user
@@ -117,13 +154,15 @@ class OpenStackClient(object):
             new_project = True
 
         # Assign group to project with role
-        if not new_project and self.check_role_assignment(self.ROLE.id, group=user.group, project=project):
+        if not new_project and self.check_role_assignment(
+                self.member_role().id, group=user.group, project=project):
             user.logger.info('Found assignment to role "%s" [%s]',
-                self.ROLE.name, self.ROLE.id)
+                self.member_role().name, self.member_role().id)
         else:
-            self.keystone.roles.grant(self.ROLE.id, group=user.group, project=project)
+            self.keystone.roles.grant(
+                self.member_role().id, group=user.group, project=project)
             user.logger.info('Granted access to role "%s" [%s]',
-                self.ROLE.name, self.ROLE.id)
+                self.member_role().name, self.member_role().id)
 
         # Create default network
         network = None
@@ -219,7 +258,7 @@ class OpenStackClient(object):
         router = self.openstack.network.create_router(
             project_id=project.id, name=name,
             description="Default router",
-            external_gateway_info={"network_id": self.external_network.id})
+            external_gateway_info={"network_id": self.external_network().id})
         user.logger.info('Created router "%s" [%s]', router.name, router.id)
 
         port = self.openstack.network.create_port(

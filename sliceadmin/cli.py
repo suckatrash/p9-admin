@@ -44,6 +44,12 @@ def cli(verbose, debug, ):
     else:
         set_up_logging(logging.WARNING)
 
+@cli.command("show-project")
+@click.argument("name")
+def show_project(name):
+    """Show a project and the objects within"""
+    OpenStackClient().show_project(name)
+
 @cli.command("ensure-user")
 @click.argument("name")
 @click.argument("email")

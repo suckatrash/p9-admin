@@ -305,6 +305,18 @@ class OpenStackClient(object):
             pass
         return False
 
+    def show_project(self, name):
+        try:
+            project = self.keystone.projects.find(name=name)
+        except keystoneauth1.exceptions.NotFound:
+            # Maybe the name is an ID?
+            try:
+                project = self.keystone.projects.get(name)
+            except keystoneauth1.exceptions.http.NotFound:
+                sys.exit('Could not find project with name or ID "%s"' % name)
+
+        print('Project "{}" [{}]'.format(project.name, project.id))
+
 def create_rule(email, group_id):
     return {
         'remote': [

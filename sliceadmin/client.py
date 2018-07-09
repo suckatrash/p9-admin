@@ -6,6 +6,7 @@ import keystoneclient.v3
 import keystoneauth1
 import logging
 import openstack
+import operator
 import os
 import pf9_saml_auth
 import sys
@@ -24,6 +25,9 @@ def memoize(obj):
             cache[args] = obj(*args)
         return cache[args]
     return memoizer
+
+def add_memo(obj, args, memo):
+    obj.cache[args] = memo
 
 class OpenStackClient(object):
     def __init__(self):
@@ -51,18 +55,24 @@ class OpenStackClient(object):
                 project_domain_id=os.environ["OS_PROJECT_DOMAIN_ID"],
             )
 
-        session = keystoneauth1.session.Session(auth=auth)
-        self.keystone = keystoneclient.v3.client.Client(session=session)
-        self.openstack = openstack.connect(session=session)
+        self.session = keystoneauth1.session.Session(auth=auth)
+
+    @memoize
+    def keystone(self):
+        return keystoneclient.v3.client.Client(session=self.session)
+
+    @memoize
+    def openstack(self):
+        return openstack.connect(session=self.session)
 
     @memoize
     def member_role(self):
-        return self.keystone.roles.find(name=ROLE_NAME)
+        return self.keystone().roles.find(name=ROLE_NAME)
 
     @memoize
     def service_project(self):
         try:
-            project = self.keystone.projects.find(name="service")
+            project = self.keystone().projects.find(name="service")
             logging.info('Found "%s" project [%s]', project.name, project.id)
         except keystoneauth1.exceptions.NotFound:
             logging.critical('Could not find project "service"')
@@ -73,7 +83,7 @@ class OpenStackClient(object):
     @memoize
     def external_network(self):
         name = "external"
-        network = self.openstack.network.find_network(
+        network = self.openstack().network.find_network(
             name, project_id=self.service_project().id)
         if network is None:
             logging.critical('Could not find network "%s" in project "%s"',
@@ -84,7 +94,7 @@ class OpenStackClient(object):
 
     @memoize
     def groups(self):
-        groups = self.keystone.groups.list()
+        groups = self.keystone().groups.list()
         logging.info('Retrieved %d groups', len(groups))
         return groups
 
@@ -100,7 +110,7 @@ class OpenStackClient(object):
                 user.logger.info('Found group "%s" [%s]', group.name, group.id)
                 break
         else:
-            group = self.keystone.groups.create(name=group_name, description=user.name)
+            group = self.keystone().groups.create(name=group_name, description=user.name)
             user.logger.info('Created group "%s" [%s]', group.name, group.id)
             self._groups.append(group)
 
@@ -109,7 +119,7 @@ class OpenStackClient(object):
 
     def ensure_okta_mappings(self, users):
         # Map SAML email attribute to groups
-        old_rules = self.keystone.federation.mappings.get(MAPPING_NAME).rules
+        old_rules = self.keystone().federation.mappings.get(MAPPING_NAME).rules
         new_rules = []
 
         for user in users:
@@ -129,7 +139,7 @@ class OpenStackClient(object):
                 file.write(json.dumps(old_rules, indent=2))
             logging.info("Old mappings backed up to %s", backup)
 
-            self.keystone.federation.mappings.update(MAPPING_NAME,
+            self.keystone().federation.mappings.update(MAPPING_NAME,
                 rules = old_rules + new_rules)
             logging.info("New mappings saved")
         else:
@@ -145,11 +155,11 @@ class OpenStackClient(object):
 
         # Create project
         try:
-            project = self.keystone.projects.find(name=user.name)
+            project = self.keystone().projects.find(name=user.name)
             user.logger.info('Found project "%s" [%s]', project.name, project.id)
             new_project = False
         except keystoneauth1.exceptions.NotFound:
-            project = self.keystone.projects.create(name=user.name, domain=DOMAIN)
+            project = self.keystone().projects.create(name=user.name, domain=DOMAIN)
             user.logger.info('Created project "%s" [%s]', project.name, project.id)
             new_project = True
 
@@ -159,7 +169,7 @@ class OpenStackClient(object):
             user.logger.info('Found assignment to role "%s" [%s]',
                 self.member_role().name, self.member_role().id)
         else:
-            self.keystone.roles.grant(
+            self.keystone().roles.grant(
                 self.member_role().id, group=user.group, project=project)
             user.logger.info('Granted access to role "%s" [%s]',
                 self.member_role().name, self.member_role().id)
@@ -194,14 +204,14 @@ class OpenStackClient(object):
             new_router = True
 
         ### FIXME it seems to create the default security group automatically.
-        security_groups = self.openstack.network.security_groups(
+        security_groups = self.openstack().network.security_groups(
             project_id=project.id, name=SECURITY_GROUP_NAME)
         for security_group in security_groups:
             user.logger.info('Found security group "%s" [%s]',
                 security_group.name, security_group.id)
             break
         else:
-            security_group = self.openstack.network.create_security_group(
+            security_group = self.openstack().network.create_security_group(
                 name=SECURITY_GROUP_NAME, project_id=project.id,
                 description="Default security group")
             user.logger.info('Created security group "%s" [%s]',
@@ -216,14 +226,14 @@ class OpenStackClient(object):
             sg_rule = self.create_security_group_rule(user, security_group)
 
     def find_network(self, user, project, name):
-        networks = self.openstack.network.networks(project_id=project.id, name=name)
+        networks = self.openstack().network.networks(project_id=project.id, name=name)
         for network in networks:
             user.logger.info('Found network "%s" [%s]', network.name, network.id)
             return network
         return None
 
     def create_network(self, user, project, name):
-        network = self.openstack.network.create_network(
+        network = self.openstack().network.create_network(
             project_id=project.id, name=name,
             description="Default network")
         user.logger.info('Created network "%s" [%s]',
@@ -231,7 +241,7 @@ class OpenStackClient(object):
         return network
 
     def find_subnet(self, user, project, network, name):
-        subnets = self.openstack.network.subnets(
+        subnets = self.openstack().network.subnets(
             project_id=project.id, network_id=network.id, name=name)
         for subnet in subnets:
             user.logger.info('Found subnet "%s" [%s]: %s',
@@ -240,7 +250,7 @@ class OpenStackClient(object):
         return None
 
     def create_subnet(self, user, project, network, name, cidr):
-        subnet = self.openstack.network.create_subnet(
+        subnet = self.openstack().network.create_subnet(
             project_id=project.id, network_id=network.id, name=name,
             ip_version=4, cidr=cidr, description="Default subnet")
         user.logger.info('Created subnet "%s" [%s]: %s',
@@ -248,20 +258,20 @@ class OpenStackClient(object):
         return subnet
 
     def find_router(self, user, project, name):
-        routers = self.openstack.network.routers(project_id=project.id, name=name)
+        routers = self.openstack().network.routers(project_id=project.id, name=name)
         for router in routers:
             user.logger.info('Found router "%s" [%s]', router.name, router.id)
             return router
         return None
 
     def create_router(self, user, project, network, subnet, name):
-        router = self.openstack.network.create_router(
+        router = self.openstack().network.create_router(
             project_id=project.id, name=name,
             description="Default router",
             external_gateway_info={"network_id": self.external_network().id})
         user.logger.info('Created router "%s" [%s]', router.name, router.id)
 
-        port = self.openstack.network.create_port(
+        port = self.openstack().network.create_port(
             project_id=project.id,
             network_id=network.id,
             fixed_ips=[
@@ -269,14 +279,14 @@ class OpenStackClient(object):
             ])
         user.logger.info("Created port [%s] on tenant subnet", port.id)
 
-        self.openstack.network.add_interface_to_router(
+        self.openstack().network.add_interface_to_router(
             router, subnet_id=subnet.id, port_id=port.id)
         user.logger.info("Added port to router")
 
         return router
 
     def find_security_group_rule(self, user, security_group):
-        sg_rules = self.openstack.network.security_group_rules(
+        sg_rules = self.openstack().network.security_group_rules(
             security_group_id=security_group.id,
             direction="ingress",
             ethertype="IPv4")
@@ -288,7 +298,7 @@ class OpenStackClient(object):
         return None
 
     def create_security_group_rule(self, user, security_group):
-        sg_rule = self.openstack.network.create_security_group_rule(
+        sg_rule = self.openstack().network.create_security_group_rule(
             security_group_id=security_group.id,
             direction="ingress",
             ethertype="IPv4",
@@ -299,7 +309,7 @@ class OpenStackClient(object):
 
     def check_role_assignment(self, role, group, project):
         try:
-            if self.keystone.roles.check(role, group=group, project=project):
+            if self.keystone().roles.check(role, group=group, project=project):
                 return True
         except keystoneauth1.exceptions.http.NotFound:
             pass
@@ -307,15 +317,121 @@ class OpenStackClient(object):
 
     def show_project(self, name):
         try:
-            project = self.keystone.projects.find(name=name)
+            project = self.keystone().projects.find(name=name)
         except keystoneauth1.exceptions.NotFound:
             # Maybe the name is an ID?
             try:
-                project = self.keystone.projects.get(name)
+                project = self.keystone().projects.get(name)
             except keystoneauth1.exceptions.http.NotFound:
                 sys.exit('Could not find project with name or ID "%s"' % name)
 
         print('Project "{}" [{}]'.format(project.name, project.id))
+
+        network_client = self.openstack().network
+        networks = network_client.networks(project_id=project.id)
+        for network in networks:
+            print('  Network "{}" [{}]'.format(network.name, network.id))
+            subnets = self.subnets(project_id=project.id, network_id=network.id)
+            for subnet in subnets:
+                print('    Subnet "{}" [{}] {}'.format(subnet.name, subnet.id, subnet.cidr))
+
+        routers = network_client.routers(project_id=project.id)
+        for router in routers:
+            print('  Router "{}" [{}]'.format(router.name, router.id))
+            for port in network_client.ports(device_id=router.id):
+                print("    Port {} [{}]".format(port.device_owner, port.id))
+                self.print_fixed_ips(port.fixed_ips)
+
+        for sg in self.security_groups(project_id=project.id):
+            print('  Security group "{}" [{}]'.format(sg.name, sg.id))
+
+            sort_key_func = operator.attrgetter(
+                "direction", "ether_type", "protocol", "remote_group_id",
+                "remote_ip_prefix", "port_range_min", "port_range_max")
+
+            sg_rules = network_client.security_group_rules(security_group_id=sg.id)
+            for sg_rule in sorted(sg_rules, key=sort_key_func):
+                self.print_security_group_rule(sg_rule)
+
+        for volume in self.volumes(project_id=project.id):
+            print('  Volume "{}" [{}] {} GB, {}'.format(
+                volume.name, volume.id, volume.size, volume.status))
+
+        for server in self.servers(project_id=project.id):
+            print('  Server "{}" [{}] {}'.format(
+                server.name, server.id, server.status))
+
+    def print_fixed_ips(self, fixed_ips):
+        for ip in fixed_ips:
+            subnet = self.subnet(ip["subnet_id"])
+            print("      {} ({})".format(ip["ip_address"], subnet.name))
+
+    def subnets(self, *args, **kwargs):
+        for subnet in self.openstack().network.subnets(*args, **kwargs):
+            add_memo(self.subnet, (self, subnet.id), subnet)
+            yield subnet
+
+    @memoize
+    def subnet(self, id):
+        return self.openstack().network.get_subnet(id)
+
+    def security_groups(self, *args, **kwargs):
+        for sg in self.openstack().network.security_groups(*args, **kwargs):
+            add_memo(self.security_group, (self, sg.id), sg)
+            yield sg
+
+    @memoize
+    def security_group(self, id):
+        return self.openstack().network.get_security_group(id)
+
+    def print_security_group_rule(self, rule):
+        if rule.direction == "egress":
+            direction = "to"
+        elif rule.direction == "ingress":
+            direction = "from"
+        else:
+            direction = rule.direction
+
+        if rule.remote_group_id:
+            remote = "<{}>".format(self.security_group(rule.remote_group_id).name)
+        elif rule.remote_ip_prefix:
+            remote = rule.remote_ip_prefix
+        else:
+            remote = "everywhere"
+
+        if rule.protocol == None:
+            protocol = "all"
+        else:
+            protocol = rule.protocol
+
+        if rule.port_range_min == None:
+            port_range = "all ports"
+        elif rule.port_range_min == rule.port_range_max:
+            port_range = "port {}".format(rule.port_range_min)
+        else:
+            port_range = "ports {}-{}".format(rule.port_range_min, rule.port_range_max)
+
+        print("    {} {} {} {} on {}".format(
+            rule.ether_type, protocol, direction, remote,
+            port_range))
+
+    @memoize
+    def all_volumes(self):
+        return self.openstack().block_storage.volumes(details=True, all_tenants=True)
+
+    def volumes(self, project_id):
+        for volume in self.all_volumes():
+            if volume.project_id == project_id:
+                yield volume
+
+    @memoize
+    def all_servers(self):
+        return self.openstack().compute.servers(details=True, all_tenants=True)
+
+    def servers(self, project_id):
+        for server in self.all_servers():
+            if server.project_id == project_id:
+                yield server
 
 def create_rule(email, group_id):
     return {

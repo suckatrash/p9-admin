@@ -98,6 +98,42 @@ class OpenStackClient(object):
         logging.info('Retrieved %d groups', len(groups))
         return groups
 
+    def subnets(self, *args, **kwargs):
+        for subnet in self.openstack().network.subnets(*args, **kwargs):
+            add_memo(self.subnet, (self, subnet.id), subnet)
+            yield subnet
+
+    @memoize
+    def subnet(self, id):
+        return self.openstack().network.get_subnet(id)
+
+    def security_groups(self, *args, **kwargs):
+        for sg in self.openstack().network.security_groups(*args, **kwargs):
+            add_memo(self.security_group, (self, sg.id), sg)
+            yield sg
+
+    @memoize
+    def security_group(self, id):
+        return self.openstack().network.get_security_group(id)
+
+    @memoize
+    def all_volumes(self):
+        return self.openstack().block_storage.volumes(details=True, all_tenants=True)
+
+    def volumes(self, project_id):
+        for volume in self.all_volumes():
+            if volume.project_id == project_id:
+                yield volume
+
+    @memoize
+    def all_servers(self):
+        return self.openstack().compute.servers(details=True, all_tenants=True)
+
+    def servers(self, project_id):
+        for server in self.all_servers():
+            if server.project_id == project_id:
+                yield server
+
     def ensure_group(self, user):
         # Ensure that a group exists for a user
         if user.group:
@@ -315,16 +351,18 @@ class OpenStackClient(object):
             pass
         return False
 
-    def show_project(self, name):
+    def find_project(self, name):
         try:
-            project = self.keystone().projects.find(name=name)
+            return self.keystone().projects.find(name=name)
         except keystoneauth1.exceptions.NotFound:
             # Maybe the name is an ID?
             try:
-                project = self.keystone().projects.get(name)
+                return self.keystone().projects.get(name)
             except keystoneauth1.exceptions.http.NotFound:
                 sys.exit('Could not find project with name or ID "%s"' % name)
 
+    def show_project(self, name):
+        project = self.find_project(name)
         print('Project "{}" [{}]'.format(project.name, project.id))
 
         network_client = self.openstack().network
@@ -366,24 +404,6 @@ class OpenStackClient(object):
             subnet = self.subnet(ip["subnet_id"])
             print("      {} ({})".format(ip["ip_address"], subnet.name))
 
-    def subnets(self, *args, **kwargs):
-        for subnet in self.openstack().network.subnets(*args, **kwargs):
-            add_memo(self.subnet, (self, subnet.id), subnet)
-            yield subnet
-
-    @memoize
-    def subnet(self, id):
-        return self.openstack().network.get_subnet(id)
-
-    def security_groups(self, *args, **kwargs):
-        for sg in self.openstack().network.security_groups(*args, **kwargs):
-            add_memo(self.security_group, (self, sg.id), sg)
-            yield sg
-
-    @memoize
-    def security_group(self, id):
-        return self.openstack().network.get_security_group(id)
-
     def print_security_group_rule(self, rule):
         if rule.direction == "egress":
             direction = "to"
@@ -414,24 +434,6 @@ class OpenStackClient(object):
         print("    {} {} {} {} on {}".format(
             rule.ether_type, protocol, direction, remote,
             port_range))
-
-    @memoize
-    def all_volumes(self):
-        return self.openstack().block_storage.volumes(details=True, all_tenants=True)
-
-    def volumes(self, project_id):
-        for volume in self.all_volumes():
-            if volume.project_id == project_id:
-                yield volume
-
-    @memoize
-    def all_servers(self):
-        return self.openstack().compute.servers(details=True, all_tenants=True)
-
-    def servers(self, project_id):
-        for server in self.all_servers():
-            if server.project_id == project_id:
-                yield server
 
 def create_rule(email, group_id):
     return {

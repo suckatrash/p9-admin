@@ -50,6 +50,12 @@ def show_project(name):
     """Show a project and the objects within"""
     OpenStackClient().show_project(name)
 
+@cli.command("delete-project")
+@click.argument("name")
+def delete_project(name):
+    """Delete a project and the objects within"""
+    OpenStackClient().delete_project(name)
+
 @cli.command("ensure-user")
 @click.argument("name")
 @click.argument("email")

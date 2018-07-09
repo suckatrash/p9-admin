@@ -362,6 +362,7 @@ class OpenStackClient(object):
                 sys.exit('Could not find project with name or ID "%s"' % name)
 
     def show_project(self, name):
+        ### FIXME: images?
         project = self.find_project(name)
         print('Project "{}" [{}]'.format(project.name, project.id))
 
@@ -434,6 +435,52 @@ class OpenStackClient(object):
         print("    {} {} {} {} on {}".format(
             rule.ether_type, protocol, direction, remote,
             port_range))
+
+    def delete_project(self, name):
+        ### FIXME: images?
+        project = self.find_project(name)
+        logging.info('Started deleting project "%s" [%s]', project.name, project.id)
+
+        for server in self.servers(project_id=project.id):
+            self.openstack().compute.delete_server(server, force=True, ignore_missing=True)
+            logging.info('  Deleted server "%s" [%s]', server.name, server.id)
+
+        for volume in self.volumes(project_id=project.id):
+            self.openstack().block_storage.delete_volume(volume, ignore_missing=True)
+            logging.info('  Deleted volume "%s" [%s]', volume.name, volume.id)
+
+        network_client = self.openstack().network
+        routers = network_client.routers(project_id=project.id)
+        for router in routers:
+            logging.info('  Started deleting router "%s" [%s]', router.name, router.id)
+            for port in network_client.ports(device_id=router.id):
+                network_client.remove_interface_from_router(router, port_id=port.id)
+                logging.info("    Removed port %s [%s]", port.device_owner, port.id)
+            network_client.delete_router(router, ignore_missing=True)
+            logging.info('    Finished deleting router')
+
+        networks = network_client.networks(project_id=project.id)
+        for network in networks:
+            logging.info('  Started deleting network "%s" [%s]', network.name, network.id)
+            subnets = self.subnets(project_id=project.id, network_id=network.id)
+            for subnet in subnets:
+                network_client.delete_subnet(subnet, ignore_missing=True)
+                logging.info('    Deleted subnet "%s" [%s]', subnet.name, subnet.id)
+            network_client.delete_network(network, ignore_missing=True)
+            logging.info('    Finished deleting network')
+
+        # The default security group is recreating when it's deleted, so we have
+        # to delete the project first.
+        security_groups = list(self.security_groups(project_id=project.id))
+
+        self.keystone().projects.delete(project)
+        logging.info('  Deleted project itself')
+
+        for sg in security_groups:
+            network_client.delete_security_group(sg, ignore_missing=True)
+            logging.info('  Deleted security group "%s" [%s]', sg.name, sg.id)
+
+        logging.info('  Finished deleting project')
 
 def create_rule(email, group_id):
     return {

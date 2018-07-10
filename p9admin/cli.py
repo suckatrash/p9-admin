@@ -77,7 +77,7 @@ def ensure_user(name, email):
 
     user = User(name, email)
     client.ensure_group(user)
-    client.ensure_okta_mappings([user])
+    client.saml().ensure_mappings([user])
     client.ensure_project(user)
 
 @cli.command("ensure-ldap-users")
@@ -100,7 +100,7 @@ def ensure_ldap_users(filter, uid, password):
     for user in users:
         client.ensure_group(user)
 
-    client.ensure_okta_mappings(users)
+    client.saml().ensure_mappings(users)
 
     for user in users:
         client.ensure_project(user)

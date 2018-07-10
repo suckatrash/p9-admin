@@ -1,19 +1,16 @@
 from __future__ import print_function
-from datetime import datetime
 import functools
-import json
 import keystoneclient.v3
 import keystoneauth1
 import logging
 import openstack
 import operator
 import os
-import pf9_saml_auth
+import p9admin
 import sys
 
 # Platform9 constants
 ROLE_NAME = "_member_"
-MAPPING_NAME = "idp1_mapping"
 DOMAIN = "default"
 
 def memoize(obj):
@@ -34,15 +31,7 @@ class OpenStackClient(object):
         if os.environ.get("OS_PROTOCOL", "password") == "SAML":
             logging.info('Authenticating as "%s" on project "%s" with SAML',
                 os.environ["OS_USERNAME"], os.environ["OS_PROJECT_NAME"])
-            auth = pf9_saml_auth.V3Pf9SamlOkta(
-                auth_url=os.environ["OS_AUTH_URL"],
-                username=os.environ["OS_USERNAME"],
-                password=os.environ["OS_PASSWORD"],
-                project_name=os.environ["OS_PROJECT_NAME"],
-                project_domain_name=os.environ["OS_PROJECT_DOMAIN_ID"],
-                protocol="saml2",
-                identity_provider="IDP1",
-            )
+            auth = self.saml().auth()
         else:
             logging.info('Authenticating as "%s" on project "%s" with password',
                 os.environ["OS_USERNAME"], os.environ["OS_PROJECT_NAME"])
@@ -64,6 +53,10 @@ class OpenStackClient(object):
     @memoize
     def openstack(self):
         return openstack.connect(session=self.session)
+
+    @memoize
+    def saml(self):
+        return p9admin.SAML(self)
 
     @memoize
     def member_role(self):
@@ -137,21 +130,16 @@ class OpenStackClient(object):
     def show_group(self, email):
         group = self.keystone().groups.find(name="User: {}".format(email))
         print('Group "{}" [{}]: {}'.format(group.name, group.id, group.description))
-        rules = self.keystone().federation.mappings.get(MAPPING_NAME).rules
-        for rule in rules:
-            if check_rule(rule, email, group.id):
-                print("  Rule")
-                for match in rule["remote"]:
-                    m2 = match.copy()
-                    del(m2["type"])
-                    print("    {}: {}".format(match["type"], m2))
+        for rule in self.saml().filter_mappings(email, group.id):
+            print("  Rule")
+            for match in rule["remote"]:
+                m2 = match.copy()
+                del(m2["type"])
+                print("    {}: {}".format(match["type"], m2))
 
     def delete_group(self, email):
         group = self.keystone().groups.find(name="User: {}".format(email))
-        old_rules = self.okta_mappings()
-        new_rules = [r for r in old_rules if not check_rule(r, email, group.id)]
-
-        self.save_okta_mappings(old_rules, new_rules)
+        self.saml().delete_mapping(email, group.id)
         self.keystone().groups.delete(group)
         logging.info('Deleted group "%s", [%s]', group.name, group.id)
 
@@ -174,39 +162,6 @@ class OpenStackClient(object):
 
         user.group = group
         return group
-
-    def okta_mappings(self):
-        return self.keystone().federation.mappings.get(MAPPING_NAME).rules
-
-    def save_okta_mappings(self, old_rules, new_rules):
-        backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
-        with open(backup, "w") as file:
-            file.write(json.dumps(old_rules, indent=2))
-        logging.info("Old mappings backed up to %s", backup)
-
-        self.keystone().federation.mappings.update(MAPPING_NAME, rules=new_rules)
-        logging.info("New mappings saved")
-
-    def ensure_okta_mappings(self, users):
-        # Map SAML email attribute to groups
-        old_rules = self.okta_mappings()
-        new_rules = []
-
-        for user in users:
-            for rule in old_rules:
-                if check_rule(rule, user.email, user.group.id):
-                    logging.info('Found mapping of "%s" to group [%s]',
-                        user.email, user.group.id)
-                    break
-            else:
-                new_rules.append(create_rule(user.email, user.group.id))
-                logging.info('Adding mapping of "%s" to group [%s]',
-                    user.email, user.group.id)
-
-        if new_rules:
-            self.save_okta_mappings(old_rules, old_rules + new_rules)
-        else:
-            logging.info("Mappings are already up to date")
 
     def ensure_project(self, user):
         # Default set up for projects
@@ -508,37 +463,3 @@ class OpenStackClient(object):
             logging.info('  Deleted security group "%s" [%s]', sg.name, sg.id)
 
         logging.info('  Finished deleting project')
-
-def create_rule(email, group_id):
-    return {
-        'remote': [
-            {'type': 'FirstName'},
-            {'type': 'LastName'},
-            {'type': 'Email', 'regex': False, 'any_one_of': [email]}
-        ],
-        'local': [
-            {
-                'group': {'id': group_id},
-                'user': {'name': '{0} {1}'}
-            }
-        ]
-    }
-
-def check_rule(rule, email, group_id):
-    """
-    Check if a rule matches and email and group
-
-    See create_rule() for an example of what a rule looks like.
-    """
-
-    for match in rule["remote"]:
-        if match.get("type") == "Email" and email in match.get("any_one_of"):
-            break
-    else:
-        return False
-
-    for match in rule["local"]:
-        if match.get("group", dict()).get("id") == group_id:
-            return True
-
-    return False

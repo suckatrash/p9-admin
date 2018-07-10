@@ -1,13 +1,13 @@
 import setuptools
 
 setuptools.setup(
-    name = "slice-admin",
+    name = "p9-admin",
     version = "0.0.1",
 
     description = "Administrative tools for SLICE",
     author = "Daniel Parks",
     author_email = "daniel.parks@puppet.com",
-    url = "http://github.com/puppetlabs/slice-admin",
+    url = "http://github.com/puppetlabs/p9-admin",
     license = "BSD",
     long_description = open("README.rst").read(),
 
@@ -32,7 +32,7 @@ setuptools.setup(
     include_package_data = True,
     entry_points = {
         "console_scripts": [
-            "slice-admin = sliceadmin.cli:main"
+            "p9-admin = p9admin.cli:main"
         ]
     }
 )

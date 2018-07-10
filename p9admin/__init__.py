@@ -1,5 +1,5 @@
 import logging
-from sliceadmin.client import OpenStackClient
+from p9admin.client import OpenStackClient
 
 class User(object):
     def __init__(self, name, email, group=None, number=None):

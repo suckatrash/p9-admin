@@ -2,7 +2,7 @@ import click
 import logging
 import openstack
 import os
-from sliceadmin import User, OpenStackClient
+from p9admin import User, OpenStackClient
 import sys
 
 def set_up_logging(level=logging.WARNING):

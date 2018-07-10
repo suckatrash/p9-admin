@@ -1,7 +1,7 @@
-slice-admin
-===========
+p9-admin
+========
 
-Administer SLICE.
+Tool for administering our Platform9 environment.
 
 LDAP
 ~~~~

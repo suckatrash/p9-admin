@@ -134,6 +134,27 @@ class OpenStackClient(object):
             if server.project_id == project_id:
                 yield server
 
+    def show_group(self, email):
+        group = self.keystone().groups.find(name="User: {}".format(email))
+        print('Group "{}" [{}]: {}'.format(group.name, group.id, group.description))
+        rules = self.keystone().federation.mappings.get(MAPPING_NAME).rules
+        for rule in rules:
+            if check_rule(rule, email, group.id):
+                print("  Rule")
+                for match in rule["remote"]:
+                    m2 = match.copy()
+                    del(m2["type"])
+                    print("    {}: {}".format(match["type"], m2))
+
+    def delete_group(self, email):
+        group = self.keystone().groups.find(name="User: {}".format(email))
+        old_rules = self.okta_mappings()
+        new_rules = [r for r in old_rules if not check_rule(r, email, group.id)]
+
+        self.save_okta_mappings(old_rules, new_rules)
+        self.keystone().groups.delete(group)
+        logging.info('Deleted group "%s", [%s]', group.name, group.id)
+
     def ensure_group(self, user):
         # Ensure that a group exists for a user
         if user.group:
@@ -148,14 +169,27 @@ class OpenStackClient(object):
         else:
             group = self.keystone().groups.create(name=group_name, description=user.name)
             user.logger.info('Created group "%s" [%s]', group.name, group.id)
-            self._groups.append(group)
+            ### FIXME abstract memoization modification
+            self.groups.cache[(self,)].append(group)
 
         user.group = group
         return group
 
+    def okta_mappings(self):
+        return self.keystone().federation.mappings.get(MAPPING_NAME).rules
+
+    def save_okta_mappings(self, old_rules, new_rules):
+        backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
+        with open(backup, "w") as file:
+            file.write(json.dumps(old_rules, indent=2))
+        logging.info("Old mappings backed up to %s", backup)
+
+        self.keystone().federation.mappings.update(MAPPING_NAME, rules=new_rules)
+        logging.info("New mappings saved")
+
     def ensure_okta_mappings(self, users):
         # Map SAML email attribute to groups
-        old_rules = self.keystone().federation.mappings.get(MAPPING_NAME).rules
+        old_rules = self.okta_mappings()
         new_rules = []
 
         for user in users:
@@ -170,14 +204,7 @@ class OpenStackClient(object):
                     user.email, user.group.id)
 
         if new_rules:
-            backup = datetime.now().strftime("/tmp/rules_%Y-%m-%d_%H:%M:%S.json")
-            with open(backup, "w") as file:
-                file.write(json.dumps(old_rules, indent=2))
-            logging.info("Old mappings backed up to %s", backup)
-
-            self.keystone().federation.mappings.update(MAPPING_NAME,
-                rules = old_rules + new_rules)
-            logging.info("New mappings saved")
+            self.save_okta_mappings(old_rules, old_rules + new_rules)
         else:
             logging.info("Mappings are already up to date")
 

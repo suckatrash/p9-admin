@@ -44,6 +44,18 @@ def cli(verbose, debug, ):
     else:
         set_up_logging(logging.WARNING)
 
+@cli.command("show-group")
+@click.argument("email")
+def show_group(email):
+    """Show a group"""
+    OpenStackClient().show_group(email)
+
+@cli.command("delete-group")
+@click.argument("email")
+def delete_group(email):
+    """Delete a group"""
+    OpenStackClient().delete_group(email)
+
 @cli.command("show-project")
 @click.argument("name")
 def show_project(name):

@@ -78,7 +78,7 @@ def project_ensure(name):
     """Ensure a project exists"""
     client = p9admin.OpenStackClient()
     project = p9admin.project.ensure_project(client, name)
-    print('Project {} [{}]'.format(project.name, project.id))
+    print('Project "{}" [{}]'.format(project.name, project.id))
 
 @project.command("show")
 @click.argument("name")

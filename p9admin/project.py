@@ -1,10 +1,20 @@
+from __future__ import print_function
 import keystoneauth1
 import logging
 import operator
 
 logger = logging.getLogger(__name__)
 
-def ensure_project(client, name):
+def ensure_project(client, name, assume_complete=True):
+    """
+    Ensure that a project and the standard resources exist
+
+    By default (assume_complete=True) this does not check that the standard
+    project resources, e.g. network1, exist if the project already exists.
+
+    Set assume_complete=False to ensure all of the standard project resources
+    exist even if the project itself already exists.
+    """
     # Default set up for projects
     NETWORK_NAME = "network1"
     SUBNET_NAME = "subnet0"
@@ -18,6 +28,8 @@ def ensure_project(client, name):
         project = client.keystone().projects.find(name=name)
         logger.info('Found project "%s" [%s]', project.name, project.id)
         new_project = False
+        if assume_complete:
+            return project
     except keystoneauth1.exceptions.NotFound:
         project = client.keystone().projects.create(name=name, domain=DOMAIN)
         logger.info('Created project "%s" [%s]', project.name, project.id)

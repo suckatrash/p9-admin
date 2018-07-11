@@ -139,12 +139,17 @@ class OpenStackClient(object):
             return user.user
 
         user.user = self.find_user(user.email)
-        if not user.user:
+        if user.user is not None:
+            self.logger.info('Found local user "%s" [%s]',
+                user.user.name, user.user.id)
+        else:
             user.user = self.keystone().users.create(
                 name=user.email,
                 email=user.email,
                 description=user.name,
                 default_project=default_project)
+            self.logger.info('Created local user "%s" [%s]',
+                user.user.name, user.user.id)
         return user.user
 
     def grant_project_access(self, project, user=None, group=None, role_name="_member_"):

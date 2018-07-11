@@ -104,31 +104,68 @@ def ensure_user(name, email):
     client.ensure_user(user, default_project=project)
     client.grant_project_access(project, user=user.user)
 
-@cli.command("grant-user-admin")
+@cli.command("ensure-ldap-users")
+@click.argument("filter", metavar="LDAP-FILTER")
+@click.option("--uid", "-u", envvar='puppetpass_username')
+@click.option("--password", "-p",
+    prompt=not os.environ.has_key('puppetpass_password'),
+    hide_input=True,
+    default=os.environ.get('puppetpass_password', None))
+def ensure_ldap_users(filter, uid, password):
+    """Ensure that local users are set up based on an LDAP filter"""
+    if not uid:
+        sys.exit("You must specify --uid USER to connect to LDAP")
+
+    users = get_ldap_users(filter, uid, password)
+    if not users:
+        return
+
+    client = p9admin.OpenStackClient()
+
+    for user in users:
+        project = p9admin.project.ensure_project(client, user.name)
+        client.ensure_user(user, default_project=project)
+        client.grant_project_access(project, user=user.user)
+
+@cli.command()
 @click.argument("email")
-def grant_user_admin(email):
-    """Grant a local user admin access to the service project"""
+@click.argument("project")
+@click.option("--admin/--member", default=False)
+def grant(email, project, admin):
+    """Grant a local user access to a project"""
     client = p9admin.OpenStackClient()
 
     user = client.find_user(email)
     if not user:
         sys.exit('User "{}" not found'.format(email))
+
+    if admin:
+        role_name = "admin"
+    else:
+        role_name = "_member_"
 
     client.grant_project_access(
-        client.service_project(), user=user, role_name="admin")
+        client.find_project(project), user=user, role_name=role_name)
 
-@cli.command("revoke-user-admin")
+@cli.command()
 @click.argument("email")
-def revoke_user_admin(email):
-    """Revoke a local user's admin access to the service project"""
+@click.argument("project")
+@click.option("--admin/--member", default=False)
+def revoke(email, project, admin):
+    """Revoke a local user's access to a project"""
     client = p9admin.OpenStackClient()
 
     user = client.find_user(email)
     if not user:
         sys.exit('User "{}" not found'.format(email))
 
+    if admin:
+        role_name = "admin"
+    else:
+        role_name = "_member_"
+
     client.revoke_project_access(
-        client.service_project(), user=user, role_name="admin")
+        client.find_project(project), user=user, role_name=role_name)
 
 @cli.command("ensure-okta-user")
 @click.argument("name")
@@ -151,7 +188,7 @@ def ensure_okta_user(name, email):
     hide_input=True,
     default=os.environ.get('puppetpass_password', None))
 def ensure_ldap_okta_users(filter, uid, password):
-    """Ensure that an Okta users are set up based on an LDAP filter"""
+    """Ensure that Okta users are set up based on an LDAP filter"""
     if not uid:
         sys.exit("You must specify --uid USER to connect to LDAP")
 

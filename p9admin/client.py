@@ -8,9 +8,6 @@ import os
 import p9admin
 import sys
 
-# Platform9 constants
-ROLE_NAME = "_member_"
-
 class TooManyError(Exception):
     """Too many results found"""
     pass
@@ -63,8 +60,8 @@ class OpenStackClient(object):
         return p9admin.SAML(self)
 
     @memoize
-    def member_role(self):
-        return self.keystone().roles.find(name=ROLE_NAME)
+    def role(self, name):
+        return self.keystone().roles.find(name=name)
 
     @memoize
     def service_project(self):
@@ -131,15 +128,9 @@ class OpenStackClient(object):
             if server.project_id == project_id:
                 yield server
 
-    def find_user(self, user):
+    def find_user(self, email):
         try:
-            users = list(self.keystone().users.find(name=user.email))
-            if len(users) > 1:
-                raise TooManyError('Found {} users with name "{}"'.format(
-                    len(users), user.email))
-            if len(users) < 1:
-                return None
-            return users[0]
+            return self.keystone().users.find(name=email)
         except keystoneauth1.exceptions.http.NotFound:
             return None
 
@@ -147,7 +138,7 @@ class OpenStackClient(object):
         if user.user:
             return user.user
 
-        user.user = self.find_user(user)
+        user.user = self.find_user(user.email)
         if not user.user:
             user.user = self.keystone().users.create(
                 name=user.email,
@@ -156,17 +147,60 @@ class OpenStackClient(object):
                 default_project=default_project)
         return user.user
 
-    def grant_project_to_user(self, project, user):
-        role = self.member_role()
-        if self.check_role_assignment(role.id, user=user.user, project=project):
-            self.logger.info(
-                'Found user "%s" access to project "%s" with role "%s" [%s]',
-                user.user.name, project.name, role.name, role.id)
+    def grant_project_access(self, project, user=None, group=None, role_name="_member_"):
+        if user is None and group is not None:
+            subject = 'group "{}"'.format(group.name)
+        elif user is not None and group is None:
+            subject = 'user "{}"'.format(user.name)
         else:
-            self.keystone().roles.grant(role.id, user=user.user, project=project)
+            raise ValueError("Must specify exactly one of user or group")
+
+        role = self.role(role_name)
+        if self.check_role_assignment(role.id, user=user, group=group, project=project):
             self.logger.info(
-                'Granted user "%s" access to project "%s" with role "%s" [%s]',
-                user.user.name, project.name, role.name, role.id)
+                'Found %s access to project "%s" with role "%s" [%s]',
+                subject, project.name, role.name, role.id)
+        else:
+            self.keystone().roles.grant(role.id, user=user, group=group, project=project)
+            self.logger.info(
+                'Granted %s access to project "%s" with role "%s" [%s]',
+                subject, project.name, role.name, role.id)
+
+    def revoke_project_access(self, project, user=None, group=None, role_name="_member_"):
+        if user is None and group is not None:
+            subject = 'group "{}"'.format(group.name)
+        elif user is not None and group is None:
+            subject = 'user "{}"'.format(user.name)
+        else:
+            raise ValueError("Must specify exactly one of user or group")
+
+        role = self.role(role_name)
+        if self.check_role_assignment(role.id, user=user, group=group, project=project):
+            self.keystone().roles.revoke(role.id, user=user, group=group, project=project)
+            self.logger.info(
+                'Revoked %s access to project "%s" with role "%s" [%s]',
+                subject, project.name, role.name, role.id)
+        else:
+            self.logger.info(
+                'No access for %s to project "%s" with role "%s" [%s]',
+                subject, project.name, role.name, role.id)
+
+    def assign_group_to_project(self, group, project):
+        # Assign group to project with role
+        role = self.role("_member_")
+        if self.check_role_assignment(role.id, group=group, project=project):
+            self.logger.info('Found assignment to role "%s" [%s]', role.name, role.id)
+        else:
+            self.keystone().roles.grant(role.id, group=group, project=project)
+            self.logger.info('Granted access to role "%s" [%s]', role.name, role.id)
+
+    def check_role_assignment(self, role, **kwargs):
+        try:
+            if self.keystone().roles.check(role, **kwargs):
+                return True
+        except keystoneauth1.exceptions.http.NotFound:
+            pass
+        return False
 
     def show_group(self, email):
         group = self.keystone().groups.find(name="User: {}".format(email))
@@ -299,23 +333,6 @@ class OpenStackClient(object):
         self.logger.info('Created security group rule for "%s" [%s]',
             sg_rule.remote_ip_prefix, sg_rule.id)
         return sg_rule
-
-    def assign_group_to_project(self, group, project):
-        # Assign group to project with role
-        role = self.member_role()
-        if self.check_role_assignment(role.id, group=group, project=project):
-            self.logger.info('Found assignment to role "%s" [%s]', role.name, role.id)
-        else:
-            self.keystone().roles.grant(role.id, group=group, project=project)
-            self.logger.info('Granted access to role "%s" [%s]', role.name, role.id)
-
-    def check_role_assignment(self, role, **kwargs):
-        try:
-            if self.keystone().roles.check(role, **kwargs):
-                return True
-        except keystoneauth1.exceptions.http.NotFound:
-            pass
-        return False
 
     def find_project(self, name):
         try:

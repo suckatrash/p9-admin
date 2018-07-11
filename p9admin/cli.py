@@ -88,7 +88,33 @@ def ensure_user(name, email):
     user = p9admin.User(name, email)
     project = p9admin.project.ensure_project(client, user.name)
     client.ensure_user(user, default_project=project)
-    client.grant_project_to_user(project, user)
+    client.grant_project_access(project, user=user.user)
+
+@cli.command("grant-user-admin")
+@click.argument("email")
+def grant_user_admin(email):
+    """Grant a local user admin access to the service project"""
+    client = p9admin.OpenStackClient()
+
+    user = client.find_user(email)
+    if not user:
+        sys.exit('User "{}" not found'.format(email))
+
+    client.grant_project_access(
+        client.service_project(), user=user, role_name="admin")
+
+@cli.command("revoke-user-admin")
+@click.argument("email")
+def revoke_user_admin(email):
+    """Revoke a local user's admin access to the service project"""
+    client = p9admin.OpenStackClient()
+
+    user = client.find_user(email)
+    if not user:
+        sys.exit('User "{}" not found'.format(email))
+
+    client.revoke_project_access(
+        client.service_project(), user=user, role_name="admin")
 
 @cli.command("ensure-okta-user")
 @click.argument("name")

@@ -11,6 +11,10 @@ import sys
 # Platform9 constants
 ROLE_NAME = "_member_"
 
+class TooManyError(Exception):
+    """Too many results found"""
+    pass
+
 def memoize(obj):
     cache = obj.cache = {}
 
@@ -126,6 +130,43 @@ class OpenStackClient(object):
         for server in self.all_servers():
             if server.project_id == project_id:
                 yield server
+
+    def find_user(self, user):
+        try:
+            users = list(self.keystone().users.find(name=user.email))
+            if len(users) > 1:
+                raise TooManyError('Found {} users with name "{}"'.format(
+                    len(users), user.email))
+            if len(users) < 1:
+                return None
+            return users[0]
+        except keystoneauth1.exceptions.http.NotFound:
+            return None
+
+    def ensure_user(self, user, default_project=None):
+        if user.user:
+            return user.user
+
+        user.user = self.find_user(user)
+        if not user.user:
+            user.user = self.keystone().users.create(
+                name=user.email,
+                email=user.email,
+                description=user.name,
+                default_project=default_project)
+        return user.user
+
+    def grant_project_to_user(self, project, user):
+        role = self.member_role()
+        if self.check_role_assignment(role.id, user=user.user, project=project):
+            self.logger.info(
+                'Found user "%s" access to project "%s" with role "%s" [%s]',
+                user.user.name, project.name, role.name, role.id)
+        else:
+            self.keystone().roles.grant(role.id, user=user.user, project=project)
+            self.logger.info(
+                'Granted user "%s" access to project "%s" with role "%s" [%s]',
+                user.user.name, project.name, role.name, role.id)
 
     def show_group(self, email):
         group = self.keystone().groups.find(name="User: {}".format(email))
@@ -268,9 +309,9 @@ class OpenStackClient(object):
             self.keystone().roles.grant(role.id, group=group, project=project)
             self.logger.info('Granted access to role "%s" [%s]', role.name, role.id)
 
-    def check_role_assignment(self, role, group, project):
+    def check_role_assignment(self, role, **kwargs):
         try:
-            if self.keystone().roles.check(role, group=group, project=project):
+            if self.keystone().roles.check(role, **kwargs):
                 return True
         except keystoneauth1.exceptions.http.NotFound:
             pass

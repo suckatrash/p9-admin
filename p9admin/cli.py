@@ -82,6 +82,18 @@ def delete_project(name):
 @click.argument("name")
 @click.argument("email")
 def ensure_user(name, email):
+    """Ensure that a local user is all set up"""
+    client = p9admin.OpenStackClient()
+
+    user = p9admin.User(name, email)
+    project = p9admin.project.ensure_project(client, user.name)
+    client.ensure_user(user, default_project=project)
+    client.grant_project_to_user(project, user)
+
+@cli.command("ensure-okta-user")
+@click.argument("name")
+@click.argument("email")
+def ensure_okta_user(name, email):
     """Ensure that an Okta user is all set up"""
     client = p9admin.OpenStackClient()
 
@@ -91,14 +103,14 @@ def ensure_user(name, email):
     project = p9admin.project.ensure_project(client, user.name)
     client.assign_group_to_project(user.group, project)
 
-@cli.command("ensure-ldap-users")
+@cli.command("ensure-ldap-okta-users")
 @click.argument("filter", metavar="LDAP-FILTER")
 @click.option("--uid", "-u", envvar='puppetpass_username')
 @click.option("--password", "-p",
     prompt=not os.environ.has_key('puppetpass_password'),
     hide_input=True,
     default=os.environ.get('puppetpass_password', None))
-def ensure_ldap_users(filter, uid, password):
+def ensure_ldap_okta_users(filter, uid, password):
     """Ensure that an Okta users are set up based on an LDAP filter"""
     if not uid:
         sys.exit("You must specify --uid USER to connect to LDAP")

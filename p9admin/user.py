@@ -3,6 +3,8 @@ class User(object):
         self.name = name
         self.email = email
         self.group = group
+        # Keystone user object
+        self.user = None
 
     def __str__(self):
         return "{name} <{email}>".format(**self.__dict__)

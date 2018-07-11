@@ -2,7 +2,7 @@ import click
 import logging
 import openstack
 import os
-from p9admin import User, OpenStackClient
+import p9admin
 import sys
 
 def set_up_logging(level=logging.WARNING):
@@ -48,37 +48,38 @@ def cli(verbose, debug, ):
 @click.argument("email")
 def show_group(email):
     """Show a group"""
-    OpenStackClient().show_group(email)
+    p9admin.OpenStackClient().show_group(email)
 
 @cli.command("delete-group")
 @click.argument("email")
 def delete_group(email):
     """Delete a group"""
-    OpenStackClient().delete_group(email)
+    p9admin.OpenStackClient().delete_group(email)
 
 @cli.command("show-project")
 @click.argument("name")
 def show_project(name):
     """Show a project and the objects within"""
-    OpenStackClient().show_project(name)
+    p9admin.project.show_project(p9admin.OpenStackClient(), name)
 
 @cli.command("delete-project")
 @click.argument("name")
 def delete_project(name):
     """Delete a project and the objects within"""
-    OpenStackClient().delete_project(name)
+    p9admin.project.delete_project(p9admin.OpenStackClient(), name)
 
 @cli.command("ensure-user")
 @click.argument("name")
 @click.argument("email")
 def ensure_user(name, email):
     """Ensure that an Okta user is all set up"""
-    client = OpenStackClient()
+    client = p9admin.OpenStackClient()
 
-    user = User(name, email)
+    user = p9admin.User(name, email)
     client.ensure_group(user)
     client.saml().ensure_mappings([user])
-    client.ensure_project(user)
+    project = p9admin.project.ensure_project(client, user.name)
+    client.assign_group_to_project(user.group, project)
 
 @cli.command("ensure-ldap-users")
 @click.argument("filter", metavar="LDAP-FILTER")
@@ -96,14 +97,15 @@ def ensure_ldap_users(filter, uid, password):
     if not users:
         return
 
-    client = OpenStackClient()
+    client = p9admin.OpenStackClient()
     for user in users:
         client.ensure_group(user)
 
     client.saml().ensure_mappings(users)
 
     for user in users:
-        client.ensure_project(user)
+        project = p9admin.project.ensure_project(client, user.name)
+        client.assign_group_to_project(user.group, project)
 
 def get_ldap_users(filter, uid, password):
     USERS_DN = "ou=users,dc=puppetlabs,dc=com"
@@ -151,7 +153,7 @@ def get_ldap_users(filter, uid, password):
             if len(mails) > 1:
                 logging.warn("%s has %d mail values", dn, len(mails))
 
-            user_objects.append(User(cns[0], mails[0], number=count))
+            user_objects.append(p9admin.User(cns[0], mails[0], number=count))
             count += 1
 
         return user_objects

@@ -66,15 +66,20 @@ def delete_group(email):
     """Delete a group"""
     p9admin.OpenStackClient().delete_group(email)
 
-@cli.command("show-project")
+@cli.group()
+def project():
+    """Commands to manage projects"""
+    pass
+
+@project.command("show")
 @click.argument("name")
-def show_project(name):
+def project_show(name):
     """Show a project and the objects within"""
     p9admin.project.show_project(p9admin.OpenStackClient(), name)
 
-@cli.command("delete-project")
+@project.command("delete")
 @click.argument("name")
-def delete_project(name):
+def project_delete(name):
     """Delete a project and the objects within"""
     p9admin.project.delete_project(p9admin.OpenStackClient(), name)
 

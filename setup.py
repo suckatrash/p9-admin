@@ -2,9 +2,9 @@ import setuptools
 
 setuptools.setup(
     name = "p9-admin",
-    version = "0.0.1",
+    version = "0.0.2",
 
-    description = "Administrative tools for SLICE",
+    description = "Administrative tools for Platform9",
     author = "Daniel Parks",
     author_email = "daniel.parks@puppet.com",
     url = "http://github.com/puppetlabs/p9-admin",
@@ -25,8 +25,7 @@ setuptools.setup(
     install_requires = [
         "click",
         "openstacksdk",
-        # Must be installed manually, since it's not on PyPi
-        "pf9-saml-auth"
+        "pf9-saml-auth",
     ],
 
     include_package_data = True,

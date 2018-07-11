@@ -1,10 +1,17 @@
-from __future__ import print_function
 import click
 import logging
 import openstack
 import os
 import p9admin
+import p9admin.cli.project
+import p9admin.cli.user
 import sys
+
+def add_command_group(module):
+    for attr in dir(module):
+        object = getattr(module, attr)
+        if object.__class__ == click.core.Group:
+            cli.add_command(object)
 
 def set_up_logging(level=logging.WARNING):
     logging.captureWarnings(True)
@@ -35,7 +42,7 @@ def main():
 @click.option("--verbose", "-v", default=False, is_flag=True)
 @click.option("--debug", "-d", default=False, is_flag=True)
 @click.version_option()
-def cli(verbose, debug, ):
+def cli(verbose, debug):
     if debug:
         set_up_logging(logging.DEBUG)
         openstack.enable_logging(debug=True, http_debug=True)
@@ -66,31 +73,6 @@ def show_group(email):
 def delete_group(email):
     """Delete a group"""
     p9admin.OpenStackClient().delete_group(email)
-
-@cli.group()
-def project():
-    """Commands to manage projects"""
-    pass
-
-@project.command("ensure")
-@click.argument("name")
-def project_ensure(name):
-    """Ensure a project exists"""
-    client = p9admin.OpenStackClient()
-    project = p9admin.project.ensure_project(client, name)
-    print('Project "{}" [{}]'.format(project.name, project.id))
-
-@project.command("show")
-@click.argument("name")
-def project_show(name):
-    """Show a project and the objects within"""
-    p9admin.project.show_project(p9admin.OpenStackClient(), name)
-
-@project.command("delete")
-@click.argument("name")
-def project_delete(name):
-    """Delete a project and the objects within"""
-    p9admin.project.delete_project(p9admin.OpenStackClient(), name)
 
 @cli.command("ensure-user")
 @click.argument("name")
@@ -206,6 +188,7 @@ def ensure_ldap_okta_users(filter, uid, password):
         project = p9admin.project.ensure_project(client, user.name)
         client.assign_group_to_project(user.group, project)
 
+
 def get_ldap_users(filter, uid, password):
     USERS_DN = "ou=users,dc=puppetlabs,dc=com"
     LDAP_URL = "ldap://ldap.puppetlabs.com"
@@ -258,6 +241,9 @@ def get_ldap_users(filter, uid, password):
         return user_objects
     finally:
         client.unbind()
+
+add_command_group(project)
+add_command_group(user)
 
 if __name__ == '__main__':
     cli()

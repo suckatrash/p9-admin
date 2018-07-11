@@ -44,6 +44,16 @@ def cli(verbose, debug, ):
     else:
         set_up_logging(logging.WARNING)
 
+@cli.command("repl")
+def repl():
+    """Drop into interactive Python REPL"""
+    client = p9admin.OpenStackClient()
+
+    import code
+    vars = globals().copy()
+    vars.update(locals())
+    code.interact(local=vars)
+
 @cli.command("show-group")
 @click.argument("email")
 def show_group(email):

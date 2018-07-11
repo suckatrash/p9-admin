@@ -258,3 +258,6 @@ def get_ldap_users(filter, uid, password):
         return user_objects
     finally:
         client.unbind()
+
+if __name__ == '__main__':
+    cli()

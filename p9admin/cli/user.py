@@ -46,11 +46,35 @@ def ensure_ldap_users(filter, uid, password):
         client.ensure_user(user, default_project=project)
         client.grant_project_access(project, user=user.user)
 
-@user.command()
+@user.command("ensure-group")
+@click.argument("name")
+@click.argument("emails", nargs=-1)
+def ensure_group(name, emails):
+    """Ensure that a group exists"""
+    ### FIXME need to be able to remove members too
+    client = p9admin.OpenStackClient()
+    group = client.ensure_group(name)
+
+    users = []
+    bad_emails = []
+    for email in emails:
+        user = client.find_user(email)
+        if user is None:
+            bad_emails.append(email)
+        else:
+            users.append(user)
+
+    if bad_emails:
+        sys.exit("Could not find the following users: {}".format(
+            ", ".join(bad_emails)))
+
+    client.ensure_group_members(group, users)
+
+@user.command("grant-user")
 @click.argument("email")
 @click.argument("project")
 @click.option("--admin/--member", default=False)
-def grant(email, project, admin):
+def grant_user(email, project, admin):
     """Grant a local user access to a project"""
     client = p9admin.OpenStackClient()
 
@@ -66,11 +90,11 @@ def grant(email, project, admin):
     client.grant_project_access(
         client.find_project(project), user=user, role_name=role_name)
 
-@user.command()
+@user.command("revoke-user")
 @click.argument("email")
 @click.argument("project")
 @click.option("--admin/--member", default=False)
-def revoke(email, project, admin):
+def revoke_user(email, project, admin):
     """Revoke a local user's access to a project"""
     client = p9admin.OpenStackClient()
 
@@ -85,5 +109,45 @@ def revoke(email, project, admin):
 
     client.revoke_project_access(
         client.find_project(project), user=user, role_name=role_name)
+
+@user.command("grant-group")
+@click.argument("name")
+@click.argument("project")
+@click.option("--admin/--member", default=False)
+def grant_group(name, project, admin):
+    """Grant a group access to a project"""
+    client = p9admin.OpenStackClient()
+
+    group = client.find_group(name)
+    if not group:
+        sys.exit('Group "{}" not found'.format(name))
+
+    if admin:
+        role_name = "admin"
+    else:
+        role_name = "_member_"
+
+    client.grant_project_access(
+        client.find_project(project), group=group, role_name=role_name)
+
+@user.command("revoke-group")
+@click.argument("name")
+@click.argument("project")
+@click.option("--admin/--member", default=False)
+def revoke_group(name, project, admin):
+    """Revoke a group's access to a project"""
+    client = p9admin.OpenStackClient()
+
+    group = client.find_group(name)
+    if not group:
+        sys.exit('Group "{}" not found'.format(name))
+
+    if admin:
+        role_name = "admin"
+    else:
+        role_name = "_member_"
+
+    client.revoke_project_access(
+        client.find_project(project), group=group, role_name=role_name)
 
 

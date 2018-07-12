@@ -153,6 +153,26 @@ class OpenStackClient(object):
                 user.user.name, user.user.id)
         return user.user
 
+    def find_group(self, name):
+        try:
+            return self.keystone().groups.find(name=name)
+        except keystoneauth1.exceptions.http.NotFound:
+            return None
+
+    def ensure_group(self, name):
+        group = self.find_group(name)
+        if group is not None:
+            self.logger.info('Found group "%s" [%s]', group.name, group.id)
+        else:
+            group = self.keystone().groups.create(name=name)
+            self.logger.info('Created group "%s" [%s]', group.name, group.id)
+        return group
+
+    def ensure_group_members(self, group, users):
+        for user in users:
+            self.keystone().users.add_to_group(user, group)
+        self.logger.info('Ensured %d users were in group "%s"', len(users), group.name)
+
     def grant_project_access(self, project, user=None, group=None, role_name="_member_"):
         if user is None and group is not None:
             subject = 'group "{}"'.format(group.name)

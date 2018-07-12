@@ -49,9 +49,10 @@ def ensure_ldap_users(filter, uid, password):
 @user.command("ensure-group")
 @click.argument("name")
 @click.argument("emails", nargs=-1)
-def ensure_group(name, emails):
+@click.option("--keep-others/--remove-others", default=True)
+def ensure_group(name, emails, keep_others):
     """Ensure that a group exists"""
-    ### FIXME need to be able to remove members too
+
     client = p9admin.OpenStackClient()
     group = client.ensure_group(name)
 
@@ -68,7 +69,7 @@ def ensure_group(name, emails):
         sys.exit("Could not find the following users: {}".format(
             ", ".join(bad_emails)))
 
-    client.ensure_group_members(group, users)
+    client.ensure_group_members(group, users, keep_others=keep_others)
 
 @user.command("grant-user")
 @click.argument("email")

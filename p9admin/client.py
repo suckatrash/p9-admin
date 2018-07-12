@@ -168,10 +168,37 @@ class OpenStackClient(object):
             self.logger.info('Created group "%s" [%s]', group.name, group.id)
         return group
 
-    def ensure_group_members(self, group, users):
-        for user in users:
-            self.keystone().users.add_to_group(user, group)
-        self.logger.info('Ensured %d users were in group "%s"', len(users), group.name)
+    def ensure_group_members(self, group, ensure_users, keep_others=False):
+        existing_users = self.keystone().users.list(group=group)
+        existing_users = set([u.id for u in existing_users])
+        ensure_users = set([u.id for u in ensure_users])
+
+        to_add = ensure_users - existing_users
+
+        if keep_others:
+            to_delete = set()
+            unchanged = existing_users
+        else:
+            to_delete = existing_users - ensure_users
+            unchanged = ensure_users & existing_users
+
+        for user_id in to_add:
+            self.keystone().users.add_to_group(user_id, group)
+            self.logger.debug('Added user [%s] to group "%s" [%s]',
+                user_id, group.name, group.id)
+
+        for user_id in to_delete:
+            self.keystone().users.remove_from_group(user_id, group)
+            self.logger.debug('Deleted user [%s] from group "%s" [%s]',
+                user_id, group.name, group.id)
+
+        for user_id in unchanged:
+            self.logger.debug('Leaving user [%s] in group "%s" [%s]',
+                user_id, group.name, group.id)
+
+        self.logger.info(
+            'Updating group "%s" [%s] members: +%d -%d (%d unchanged)',
+            group.name, group.id, len(to_add), len(to_delete), len(unchanged))
 
     def grant_project_access(self, project, user=None, group=None, role_name="_member_"):
         if user is None and group is not None:

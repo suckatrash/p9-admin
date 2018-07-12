@@ -24,6 +24,36 @@ class User(object):
             str(self),
             group_id)
 
+def load_users(p9Users, client):
+    """Convert Users into user objects returned by keystone"""
+    users = []
+    bad_emails = []
+
+    for p9User in p9Users:
+        p9User.user = client.find_user(p9User)
+        if p9User.user is None:
+            bad_emails.append(p9User.email)
+        else:
+            users.append(p9User.user)
+
+    if bad_emails:
+        sys.exit("Found users that do not exist in Platform9: {}".format(
+            ", ".join(bad_emails)))
+
+    return users
+
+def get_ldap_group_users(name, uid, password):
+    filters = [
+        'objectClass=puppetPerson',
+        '!(objectClass=exPuppetPerson)',
+        'memberOf=cn={},ou=groups,dc=puppetlabs,dc=com'.format(name),
+    ]
+
+    filters = "".join(["({})".format(filter) for filter in filters])
+    filter = '(&{})'.format(filters)
+
+    return get_ldap_users(filter, uid, password)
+
 def get_ldap_users(filter, uid, password):
     USERS_DN = "ou=users,dc=puppetlabs,dc=com"
     LDAP_URL = "ldap://ldap.puppetlabs.com"

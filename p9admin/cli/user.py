@@ -35,12 +35,9 @@ def ensure_ldap_users(filter, uid, password):
     if not uid:
         sys.exit("You must specify --uid USER to connect to LDAP")
 
-    users = p9admin.user.get_ldap_users(filter, uid, password)
-    if not users:
-        return
-
     client = p9admin.OpenStackClient()
 
+    users = p9admin.user.get_ldap_users(filter, uid, password)
     for user in users:
         project = p9admin.project.ensure_project(client, user.name)
         client.ensure_user(user, default_project=project)
@@ -85,20 +82,10 @@ def ensure_ldap_group(name, keep_others, uid, password):
     if not uid:
         sys.exit("You must specify --uid USER to connect to LDAP")
 
-    filters = [
-        'objectClass=puppetPerson',
-        '!(objectClass=exPuppetPerson)',
-        'memberOf=cn={},ou=groups,dc=puppetlabs,dc=com'.format(name),
-    ]
-
-    filters = "".join(["({})".format(filter) for filter in filters])
-    filter = '(&{})'.format(filters)
-    p9Users = p9admin.user.get_ldap_users(filter, uid, password)
+    p9Users = p9admin.user.get_ldap_group_users(name, uid, password)
 
     client = p9admin.OpenStackClient()
-    users = [client.find_user(u) for u in p9Users]
-    if None in users:
-        sys.exit("Some group members have not been set up in Platform9")
+    users = p9admin.user.load_users(p9Users, client)
 
     group = client.ensure_group(name)
     client.ensure_group_members(group, users, keep_others=keep_others)
@@ -121,9 +108,7 @@ def ensure_ldap_group_filter(name, filter, keep_others, uid, password):
     p9Users = p9admin.user.get_ldap_users(filter, uid, password)
 
     client = p9admin.OpenStackClient()
-    users = [client.find_user(u) for u in p9Users]
-    if None in users:
-        sys.exit("Some group members have not been set up in Platform9")
+    users = p9admin.user.load_users(p9Users, client)
 
     group = client.ensure_group(name)
     client.ensure_group_members(group, users, keep_others=keep_others)

@@ -28,6 +28,8 @@ def get_ldap_users(filter, uid, password):
     USERS_DN = "ou=users,dc=puppetlabs,dc=com"
     LDAP_URL = "ldap://ldap.puppetlabs.com"
 
+    logger = logging.getLogger(__name__)
+
     # LDAP is a pain to build. Don't fail unless we're actually using it.
     import ldap
 
@@ -40,17 +42,17 @@ def get_ldap_users(filter, uid, password):
         try:
             client.simple_bind_s(bind_dn, password)
         except ldap.LDAPError as e:
-            logging.critical("Could not bind to LDAP server '{}' as '{}': {}"
+            logger.critical("Could not bind to LDAP server '{}' as '{}': {}"
                 .format(LDAP_URL, bind_dn, e))
             sys.exit(1)
 
         users = client.search_st(USERS_DN, ldap.SCOPE_SUBTREE, filter,
             attrlist=["cn", "mail"], timeout=60)
         if len(users) == 0:
-            logging.warn('Found 0 users in LDAP for filter "%s"', filter)
+            logger.warn('Found 0 users in LDAP for filter "%s"', filter)
             return []
 
-        logging.info('Found %d users in LDAP for filter "%s"',
+        logger.info('Found %d users in LDAP for filter "%s"',
             len(users), filter)
 
         user_objects = []
@@ -59,16 +61,16 @@ def get_ldap_users(filter, uid, password):
             mails = attrs.get("mail", list())
 
             if not cns:
-                logging.error("Skipping %s: no cn attribute", dn)
+                logger.error("Skipping %s: no cn attribute", dn)
                 continue
             if not mails:
-                logging.error("Skipping %s: no mail attribute", dn)
+                logger.error("Skipping %s: no mail attribute", dn)
                 continue
 
             if len(cns) > 1:
-                logging.warn("%s has %d cn values", dn, len(mails))
+                logger.warn("%s has %d cn values", dn, len(mails))
             if len(mails) > 1:
-                logging.warn("%s has %d mail values", dn, len(mails))
+                logger.warn("%s has %d mail values", dn, len(mails))
 
             user_objects.append(p9admin.User(cns[0], mails[0], number=count))
             count += 1

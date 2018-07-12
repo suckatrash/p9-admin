@@ -38,16 +38,21 @@ def main():
 @click.group()
 @click.option("--verbose", "-v", default=False, is_flag=True)
 @click.option("--debug", "-d", default=False, is_flag=True)
+@click.option("--openstack-debug", default=False, is_flag=True)
 @click.version_option()
-def cli(verbose, debug):
+def cli(verbose, debug, openstack_debug):
     if debug:
-        set_up_logging(logging.DEBUG)
-        openstack.enable_logging(debug=True, http_debug=True)
+        set_up_logging(logging.INFO)
+        openstack.enable_logging()
+        logging.getLogger("p9admin").setLevel(logging.DEBUG)
     elif verbose:
         set_up_logging(logging.INFO)
         openstack.enable_logging()
     else:
         set_up_logging(logging.WARNING)
+
+    if openstack_debug:
+        openstack.enable_logging(debug=True, http_debug=True)
 
 @cli.command("repl")
 def repl():

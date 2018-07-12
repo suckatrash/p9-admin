@@ -129,11 +129,19 @@ class OpenStackClient(object):
             if server.project_id == project_id:
                 yield server
 
-    def find_user(self, email):
+    def _find_user(self, email):
         try:
             return self.keystone().users.find(name=email)
         except keystoneauth1.exceptions.http.NotFound:
             return None
+
+    def find_user(self, email):
+        if isinstance(email, p9admin.User):
+            user = email
+            user.user = self._find_user(user.email)
+            return user.user
+        else:
+            return self._find_user(email)
 
     def ensure_user(self, user, default_project=None):
         if user.user:

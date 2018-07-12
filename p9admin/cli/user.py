@@ -71,6 +71,63 @@ def ensure_group(name, emails, keep_others):
 
     client.ensure_group_members(group, users, keep_others=keep_others)
 
+@user.command("ensure-ldap-group")
+@click.argument("name", metavar="GROUP-CN")
+@click.option("--keep-others/--remove-others", default=True)
+@click.option("--uid", "-u", envvar='puppetpass_username')
+@click.option("--password", "-p",
+    prompt=not os.environ.has_key('puppetpass_password'),
+    hide_input=True,
+    default=os.environ.get('puppetpass_password', None))
+def ensure_ldap_group(name, keep_others, uid, password):
+    """Ensure that a group exists based on an LDAP group"""
+
+    if not uid:
+        sys.exit("You must specify --uid USER to connect to LDAP")
+
+    filters = [
+        'objectClass=puppetPerson',
+        '!(objectClass=exPuppetPerson)',
+        'memberOf=cn={},ou=groups,dc=puppetlabs,dc=com'.format(name),
+    ]
+
+    filters = "".join(["({})".format(filter) for filter in filters])
+    filter = '(&{})'.format(filters)
+    p9Users = p9admin.user.get_ldap_users(filter, uid, password)
+
+    client = p9admin.OpenStackClient()
+    users = [client.find_user(u) for u in p9Users]
+    if None in users:
+        sys.exit("Some group members have not been set up in Platform9")
+
+    group = client.ensure_group(name)
+    client.ensure_group_members(group, users, keep_others=keep_others)
+
+@user.command("ensure-ldap-group-filter")
+@click.argument("name")
+@click.argument("filter", metavar="USER-FILTER")
+@click.option("--keep-others/--remove-others", default=True)
+@click.option("--uid", "-u", envvar='puppetpass_username')
+@click.option("--password", "-p",
+    prompt=not os.environ.has_key('puppetpass_password'),
+    hide_input=True,
+    default=os.environ.get('puppetpass_password', None))
+def ensure_ldap_group_filter(name, filter, keep_others, uid, password):
+    """Ensure that a group exists based on an LDAP filter"""
+
+    if not uid:
+        sys.exit("You must specify --uid USER to connect to LDAP")
+
+    p9Users = p9admin.user.get_ldap_users(filter, uid, password)
+
+    client = p9admin.OpenStackClient()
+    users = [client.find_user(u) for u in p9Users]
+    if None in users:
+        sys.exit("Some group members have not been set up in Platform9")
+
+    group = client.ensure_group(name)
+    client.ensure_group_members(group, users, keep_others=keep_others)
+
 @user.command("grant-user")
 @click.argument("email")
 @click.argument("project")

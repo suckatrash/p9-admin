@@ -4,7 +4,7 @@ import p9admin
 
 @click.group()
 def project():
-    """Commands to manage projects"""
+    """Manage projects"""
     pass
 
 @project.command("ensure")

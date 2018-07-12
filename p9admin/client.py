@@ -2,6 +2,7 @@ from __future__ import print_function
 import functools
 import keystoneclient.v3
 import keystoneauth1
+import keystoneauth1.identity
 import logging
 import openstack
 import os
@@ -190,15 +191,6 @@ class OpenStackClient(object):
                 'No access for %s to project "%s" with role "%s" [%s]',
                 subject, project.name, role.name, role.id)
 
-    def assign_group_to_project(self, group, project):
-        # Assign group to project with role
-        role = self.role("_member_")
-        if self.check_role_assignment(role.id, group=group, project=project):
-            self.logger.info('Found assignment to role "%s" [%s]', role.name, role.id)
-        else:
-            self.keystone().roles.grant(role.id, group=group, project=project)
-            self.logger.info('Granted access to role "%s" [%s]', role.name, role.id)
-
     def check_role_assignment(self, role, **kwargs):
         try:
             if self.keystone().roles.check(role, **kwargs):
@@ -206,42 +198,6 @@ class OpenStackClient(object):
         except keystoneauth1.exceptions.http.NotFound:
             pass
         return False
-
-    def show_group(self, email):
-        group = self.keystone().groups.find(name="User: {}".format(email))
-        print('Group "{}" [{}]: {}'.format(group.name, group.id, group.description))
-        for rule in self.saml().filter_mappings(email, group.id):
-            print("  Rule")
-            for match in rule["remote"]:
-                m2 = match.copy()
-                del(m2["type"])
-                print("    {}: {}".format(match["type"], m2))
-
-    def delete_group(self, email):
-        group = self.keystone().groups.find(name="User: {}".format(email))
-        self.saml().delete_mapping(email, group.id)
-        self.keystone().groups.delete(group)
-        self.logger.info('Deleted group "%s", [%s]', group.name, group.id)
-
-    def ensure_group(self, user):
-        # Ensure that a group exists for a user
-        if user.group:
-            return group
-
-        ### This optimizes for bulk add. Should we have a separate path when the number of users is <N?
-        group_name = "User: {}".format(user.email)
-        for group in self.groups():
-            if group.name == group_name:
-                self.logger.info('Found group "%s" [%s]', group.name, group.id)
-                break
-        else:
-            group = self.keystone().groups.create(name=group_name, description=user.name)
-            self.logger.info('Created group "%s" [%s]', group.name, group.id)
-            ### FIXME abstract memoization modification
-            self.groups.cache[(self,)].append(group)
-
-        user.group = group
-        return group
 
     def find_network(self, project, name):
         networks = self.openstack().network.networks(project_id=project.id, name=name)

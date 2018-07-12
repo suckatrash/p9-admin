@@ -2,8 +2,6 @@ import click
 import logging
 import openstack
 import p9admin
-import p9admin.cli.project
-import p9admin.cli.user
 import sys
 
 def add_command_group(module):
@@ -61,20 +59,12 @@ def repl():
     vars.update(locals())
     code.interact(local=vars)
 
-@cli.command("show-group")
-@click.argument("email")
-def show_group(email):
-    """Show a group"""
-    p9admin.OpenStackClient().show_group(email)
-
-@cli.command("delete-group")
-@click.argument("email")
-def delete_group(email):
-    """Delete a group"""
-    p9admin.OpenStackClient().delete_group(email)
-
+import p9admin.cli.project
+import p9admin.cli.saml
+import p9admin.cli.user
 
 add_command_group(project)
+add_command_group(saml)
 add_command_group(user)
 
 if __name__ == '__main__':

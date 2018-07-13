@@ -21,7 +21,7 @@ def ensure_user(name, email):
     user = p9admin.User(name, email)
     project = p9admin.project.ensure_project(client, user.name)
     client.ensure_user(user, default_project=project)
-    client.grant_project_access(project, user=user.user)
+    client.grant_project_access(project, user=user.user, role_name="admin")
 
 @user.command("ensure-ldap-users")
 @click.argument("filter", metavar="LDAP-FILTER")
@@ -41,7 +41,7 @@ def ensure_ldap_users(filter, uid, password):
     for user in users:
         project = p9admin.project.ensure_project(client, user.name)
         client.ensure_user(user, default_project=project)
-        client.grant_project_access(project, user=user.user)
+        client.grant_project_access(project, user=user.user, role_name="admin")
 
 @user.command("ensure-group")
 @click.argument("name")
@@ -192,5 +192,3 @@ def revoke_group(name, project, admin):
 
     client.revoke_project_access(
         client.find_project(project), group=group, role_name=role_name)
-
-

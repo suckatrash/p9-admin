@@ -24,7 +24,7 @@ create, like “Vampire Fighters” or “vampire-fighters”.
 Once that group has been created, you can provision the team project and all of
 the users in that team with:
 
-.. code:
+.. code::
 
     p9-admin -v project ensure-ldap -u $uid -p "$password" "Vampire Fighters"
 
@@ -38,7 +38,7 @@ Provisioning users
 Everybody in the company should already have a user. However, when somebody
 joins the company you'll need to create a new account for them:
 
-.. code:
+.. code::
 
     p9-admin -v user ensure-ldap-users uid=happy.noob
 

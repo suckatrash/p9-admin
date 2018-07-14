@@ -1,8 +1,8 @@
 Administer Puppet's Platform9 environment
 =========================================
 
-This is used for administration task for Puppet's internal Platform9
-environment. This tool requires admin access to the service project.
+This is used to administer Puppet's internal Platform9 environment. It requires
+admin access.
 
 For installation information, see the “Installing” section at bottom.
 

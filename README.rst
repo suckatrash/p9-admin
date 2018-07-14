@@ -4,6 +4,9 @@ Administer Puppet's Platform9 environment
 This is used for administration task for Puppet's internal Platform9
 environment. This tool requires admin access to the service project.
 
+For installation information, see the “Installing” section at bottom.
+
+
 Common tasks
 ~~~~~~~~~~~~
 
@@ -12,9 +15,22 @@ Provisioning a team project
 
 Some teams want a shared project for their team. For example, team “Vampire
 Fighters” might want a project that Buffy, Blade, and their friends can all
-access.
+access together.
 
+The first step for them is to file a HELP ticket to get an LDAP group created
+for them. The name of the group should be the name of the project they want to
+create, like “Vampire Fighters” or “vampire-fighters”.
 
+Once that group has been created, you can provision the team project and all of
+the users in that team with:
+
+.. code:
+
+    p9-admin -v project ensure-ldap -u $uid -p "$password" "Vampire Fighters"
+
+Note that the users with access to the team progress will not automatically
+update to match changes in LDAP. To sync with the LDAP group, simply run the
+command again.
 
 Provisioning users
 ------------------
@@ -83,7 +99,7 @@ Example usage:
 
 .. code::
 
-    ❯ source /tmp/creds-platform9-service.sh
+    ❯ source creds-platform9-service.sh
     Email: daniel.parks@puppet.com
     daniel.parks@puppet.com password:
     ❯ openstack project show service
@@ -91,6 +107,7 @@ Example usage:
     ❯ p9-admin project show service
     Project "service" [face4110e4bb88c13fedca4e878454ba]
       . . .
+
 
 Installing
 ~~~~~~~~~~
@@ -100,12 +117,25 @@ The easiest way to install this is:
 1. Clone this repo locally
 2. Create a virtualenv for it
 3. Install ``python-ldap`` (see below)
-4. Run ``python setup.py develop``.
+4. Run ``python setup.py develop``
 
 You will then be able to ``p9-admin`` directly from within the virtualenv.
 
+On macOS that looks like:
+
+.. code::
+
+    ~ ❯ git clone https://github.com/puppetlabs/p9-admin.git
+    ~ ❯ cd p9-admin
+    p9-admin ❯ virtualenv -p python2 .
+    p9-admin ❯ source bin/activate
+    p9-admin ❯ pip install python-ldap \
+      --global-option=build_ext \
+      --global-option="-I$(xcrun --show-sdk-path)/usr/include/sasl"
+    p9-admin ❯ python setup.py develop
+
 LDAP
-~~~~
+----
 
 If you wish to use LDAP search, you must install ``python-ldap``. Unfortunately,
 it requires an extra step on macOS:

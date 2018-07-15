@@ -24,10 +24,12 @@ def show(name):
     p9admin.project.show_project(p9admin.OpenStackClient(), name)
 
 @project.command()
-@click.argument("name")
-def delete(name):
-    """Delete a project and the objects within"""
-    p9admin.project.delete_project(p9admin.OpenStackClient(), name)
+@click.argument("names", metavar="NAME [NAME ...]", nargs=-1)
+def delete(names):
+    """Delete project(s) and the objects within"""
+    client = p9admin.OpenStackClient()
+    for name in names:
+        p9admin.project.delete_project(client, name)
 
 @project.command("ensure-ldap")
 @click.argument("name")

@@ -1,15 +1,22 @@
 from __future__ import print_function
 import click
-import logging
 import os
 import p9admin
 import p9admin.user
 import sys
 
+
 @click.group()
 def user():
     """Manage local users"""
     pass
+
+
+def role_name(is_admin):
+    if is_admin:
+        return "admin"
+    return "_member_"
+
 
 @user.command("ensure-user")
 @click.argument("name")
@@ -23,13 +30,14 @@ def ensure_user(name, email):
     client.ensure_user(user, default_project=project)
     client.grant_project_access(project, user=user.user)
 
+
 @user.command("ensure-ldap-users")
 @click.argument("filter", metavar="LDAP-FILTER")
 @click.option("--uid", "-u", envvar='puppetpass_username')
 @click.option("--password", "-p",
-    prompt=not os.environ.has_key('puppetpass_password'),
-    hide_input=True,
-    default=os.environ.get('puppetpass_password', None))
+              prompt='puppetpass_password' not in os.environ,
+              hide_input=True,
+              default=os.environ.get('puppetpass_password', None))
 def ensure_ldap_users(filter, uid, password):
     """Ensure that local users are set up based on an LDAP filter"""
     if not uid:
@@ -42,6 +50,7 @@ def ensure_ldap_users(filter, uid, password):
         project = p9admin.project.ensure_project(client, user.name)
         client.ensure_user(user, default_project=project)
         client.grant_project_access(project, user=user.user)
+
 
 @user.command("ensure-group")
 @click.argument("name")
@@ -68,14 +77,15 @@ def ensure_group(name, emails, keep_others):
 
     client.ensure_group_members(group, users, keep_others=keep_others)
 
+
 @user.command("ensure-ldap-group")
 @click.argument("name", metavar="GROUP-CN")
 @click.option("--keep-others/--remove-others", default=True)
 @click.option("--uid", "-u", envvar='puppetpass_username')
 @click.option("--password", "-p",
-    prompt=not os.environ.has_key('puppetpass_password'),
-    hide_input=True,
-    default=os.environ.get('puppetpass_password', None))
+              prompt='puppetpass_password' not in os.environ,
+              hide_input=True,
+              default=os.environ.get('puppetpass_password', None))
 def ensure_ldap_group(name, keep_others, uid, password):
     """Ensure that a group exists based on an LDAP group"""
 
@@ -90,15 +100,16 @@ def ensure_ldap_group(name, keep_others, uid, password):
     group = client.ensure_group(name)
     client.ensure_group_members(group, users, keep_others=keep_others)
 
+
 @user.command("ensure-ldap-group-filter")
 @click.argument("name")
 @click.argument("filter", metavar="USER-FILTER")
 @click.option("--keep-others/--remove-others", default=True)
 @click.option("--uid", "-u", envvar='puppetpass_username')
 @click.option("--password", "-p",
-    prompt=not os.environ.has_key('puppetpass_password'),
-    hide_input=True,
-    default=os.environ.get('puppetpass_password', None))
+              prompt='puppetpass_password' not in os.environ,
+              hide_input=True,
+              default=os.environ.get('puppetpass_password', None))
 def ensure_ldap_group_filter(name, filter, keep_others, uid, password):
     """Ensure that a group exists based on an LDAP filter"""
 
@@ -113,6 +124,7 @@ def ensure_ldap_group_filter(name, filter, keep_others, uid, password):
     group = client.ensure_group(name)
     client.ensure_group_members(group, users, keep_others=keep_others)
 
+
 @user.command("grant-user")
 @click.argument("email")
 @click.argument("project")
@@ -125,13 +137,9 @@ def grant_user(email, project, admin):
     if not user:
         sys.exit('User "{}" not found'.format(email))
 
-    if admin:
-        role_name = "admin"
-    else:
-        role_name = "_member_"
-
     client.grant_project_access(
-        client.find_project(project), user=user, role_name=role_name)
+        client.find_project(project), user=user, role_name=role_name(admin))
+
 
 @user.command("revoke-user")
 @click.argument("email")
@@ -145,13 +153,9 @@ def revoke_user(email, project, admin):
     if not user:
         sys.exit('User "{}" not found'.format(email))
 
-    if admin:
-        role_name = "admin"
-    else:
-        role_name = "_member_"
-
     client.revoke_project_access(
-        client.find_project(project), user=user, role_name=role_name)
+        client.find_project(project), user=user, role_name=role_name(admin))
+
 
 @user.command("grant-group")
 @click.argument("name")
@@ -165,13 +169,9 @@ def grant_group(name, project, admin):
     if not group:
         sys.exit('Group "{}" not found'.format(name))
 
-    if admin:
-        role_name = "admin"
-    else:
-        role_name = "_member_"
-
     client.grant_project_access(
-        client.find_project(project), group=group, role_name=role_name)
+        client.find_project(project), group=group, role_name=role_name(admin))
+
 
 @user.command("revoke-group")
 @click.argument("name")
@@ -179,18 +179,12 @@ def grant_group(name, project, admin):
 @click.option("--admin/--member", default=False)
 def revoke_group(name, project, admin):
     """Revoke a group's access to a project"""
+
     client = p9admin.OpenStackClient()
 
     group = client.find_group(name)
     if not group:
         sys.exit('Group "{}" not found'.format(name))
 
-    if admin:
-        role_name = "admin"
-    else:
-        role_name = "_member_"
-
     client.revoke_project_access(
-        client.find_project(project), group=group, role_name=role_name)
-
-
+        client.find_project(project), group=group, role_name=role_name(admin))

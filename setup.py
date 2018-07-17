@@ -26,6 +26,7 @@ setuptools.setup(
         "click",
         "openstacksdk",
         "pf9-saml-auth",
+        "requests",
     ],
 
     include_package_data = True,

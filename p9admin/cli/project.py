@@ -2,12 +2,15 @@ from __future__ import print_function
 import click
 import os
 import p9admin
+import pprint
 import sys
+
 
 @click.group()
 def project():
     """Manage projects"""
     pass
+
 
 @project.command()
 @click.argument("name")
@@ -17,11 +20,78 @@ def ensure(name):
     project = p9admin.project.ensure_project(client, name)
     print('Project "{}" [{}]'.format(project.name, project.id))
 
+
 @project.command()
 @click.argument("name")
 def show(name):
     """Show a project and the objects within"""
     p9admin.project.show_project(p9admin.OpenStackClient(), name)
+
+
+@project.command("apply-quota")
+@click.option("--project_name", "-p")
+@click.option("--quota_name", "-n")
+@click.option("--quota_value", "-v")
+def apply_quota(project_name, quota_name, quota_value):
+    """
+
+    Apply a quota to a project
+
+    quota_name is one of:
+
+    instances
+    ram
+    cores
+    fixed_ips
+    floating_ips
+    injected_file_content_bytes
+    injected_file_path_bytes
+    injected_files
+    key_pairs
+    metadata_items
+    security_groups
+    security_group_rules
+    server_groups
+    server_group_members
+    networks
+    subnets
+    routers
+    root_gb
+
+    quota_value is a number, -1 for unlimited
+
+
+    """
+    client = p9admin.OpenStackClient()
+    project = client.project_by_name(project_name)
+    token = client.api_token()
+
+    p9admin.validators.quota_name(quota_name)
+    p9admin.validators.quota_value(quota_name, quota_value)
+
+    p9admin.project.apply_quota(token, project.id, quota_name, quota_value)
+
+
+@project.command("get-quota")
+@click.option("--project_name", "-p")
+def get_quota(project_name):
+    """ Get a list of quotas for a project """
+    client = p9admin.OpenStackClient()
+    project = client.project_by_name(project_name)
+    token = client.api_token()
+
+    p9admin.project.get_quota(token, project.id)
+
+
+@project.command()
+def list():
+    """ Get a list of projects """
+    client = p9admin.OpenStackClient()
+    projects = client.projects()
+
+    for project in projects:
+        print(project.name)
+
 
 @project.command()
 @click.argument("names", metavar="NAME [NAME ...]", nargs=-1)

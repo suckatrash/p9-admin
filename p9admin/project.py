@@ -1,7 +1,11 @@
 from __future__ import print_function
+import json
 import keystoneauth1
 import logging
 import operator
+import pprint
+import requests
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +82,40 @@ def ensure_project(client, name, assume_complete=True):
         sg_rule = client.create_security_group_rule(sg)
 
     return project
+
+def get_quota(token, project_name):
+    nova_url = "https://puppet.platform9.net/nova/v2.1"
+    nova_url = nova_url + "/os-quota-sets/{}".format(project_name)
+
+    header = {'X-AUTH-TOKEN': token, 'Content-Type': 'application/json'}
+
+    r = requests.get(nova_url, headers=header, verify=False)
+
+    pprint.pprint(r.text)
+
+    return r.status_code
+
+
+def apply_quota(token, project_id, quota_name, quota_value):
+    """
+    Apply a quota to an existing project
+    """
+
+    nova_url = "https://puppet.platform9.net/nova/v2.1"
+    nova_url = nova_url + "/os-quota-sets/{}".format(project_id)
+
+    print("About to set quota {} to {} on url {}".format(quota_name, quota_value, nova_url))
+
+    header = {'X-AUTH-TOKEN': token, 'Content-Type': 'application/json'}
+    request_body = {"quota_set": {quota_name: quota_value}}
+    data_json = json.dumps(request_body, sort_keys=True, indent=4, separators=(',', ': '))
+
+    r = requests.put(nova_url, headers=header, data=data_json, verify=False)
+
+    pprint.pprint(r.text)
+
+    return r.status_code
+
 
 def delete_project(client, name):
     ### FIXME: images?

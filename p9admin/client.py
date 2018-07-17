@@ -27,8 +27,13 @@ def add_memo(obj, args, memo):
     obj.cache[args] = memo
 
 class OpenStackClient(object):
-    def __init__(self):
+    def __init__(self, project_name=None):
         self.logger = logging.getLogger(__name__)
+
+        if not project_name:
+            project_name = os.environ["OS_PROJECT_NAME"]
+
+        print("Authenticating against project {}".format(project_name))
 
         if os.environ.get("OS_PROTOCOL", "password") == "SAML":
             self.logger.info('Authenticating as "%s" on project "%s" with SAML',
@@ -42,7 +47,7 @@ class OpenStackClient(object):
                 username=os.environ["OS_USERNAME"],
                 password=os.environ["OS_PASSWORD"],
                 user_domain_id=os.environ["OS_USER_DOMAIN_ID"],
-                project_name=os.environ["OS_PROJECT_NAME"],
+                project_name=project_name,
                 project_domain_id=os.environ["OS_PROJECT_DOMAIN_ID"],
             )
 
@@ -59,6 +64,35 @@ class OpenStackClient(object):
     @memoize
     def saml(self):
         return p9admin.SAML(self)
+
+    def api_token(self):
+        """
+        Get an API Token to make api requests.  This may be necessary for
+        some api endpoints that aren't integrated with the sdk(quotas)
+        """
+
+        conn = openstack.connection.Connection(
+            session=self.session
+        )
+
+        return conn.authorize()
+
+    def project_by_name(self, project_name):
+        # Find Project
+        try:
+            project = self.keystone().projects.find(name=project_name)
+            self.logger.info('Found "%s" project [%s]', project.name, project.id)
+        except keystoneauth1.exceptions.NotFound:
+            sys.exit('Project "{}" not found, check your spelling, or create with ensure_project'.format(project_name))
+        return project
+
+    def projects(self):
+        try:
+            projects = self.keystone().projects.list()
+        except keystoneauth1.exceptions.NotFound:
+            sys.exit("Can't List Projects")
+        return projects
+
 
     @memoize
     def role(self, name):

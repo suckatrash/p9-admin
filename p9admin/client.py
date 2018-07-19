@@ -33,7 +33,7 @@ class OpenStackClient(object):
         if not project_name:
             project_name = os.environ["OS_PROJECT_NAME"]
 
-        print("Authenticating against project {}".format(project_name))
+        self.logger.info("Authenticating against project {}".format(project_name))
 
         if os.environ.get("OS_PROTOCOL", "password") == "SAML":
             self.logger.info('Authenticating as "%s" on project "%s" with SAML',
@@ -65,6 +65,7 @@ class OpenStackClient(object):
     def saml(self):
         return p9admin.SAML(self)
 
+    @memoize
     def api_token(self):
         """
         Get an API Token to make api requests.  This may be necessary for

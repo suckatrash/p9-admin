@@ -23,9 +23,9 @@ def quota_name(quota_name):
     ]
 
     if quota_name not in quotas:
-        sys.exit('Quota "{}" invalid, try one of {}'.format(quota_name, quota_value))
+        sys.exit('Quota "{}" invalid, try one of {}'.format(quota_name, quotas))
 
 
 def quota_value(quota_name, quota_value):
     if int(quota_value) > 1000000:
-        sys.exit("'{}' seems a bit unreasonable, don't you think?".format(quota_value))
+        sys.exit("A setting of '{}' for {} seems a bit unreasonable, don't you think?".format(quota_value, quota_name))

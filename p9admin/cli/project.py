@@ -1,10 +1,12 @@
 from __future__ import print_function
 import click
+import json
 import os
 import p9admin
 import pprint
 import sys
-
+from time import sleep
+import validators
 
 @click.group()
 def project():
@@ -28,10 +30,77 @@ def show(name):
     p9admin.project.show_project(p9admin.OpenStackClient(), name)
 
 
+@project.command("apply-quota-all")
+@click.option("--quota-name", "-n")
+@click.option("--quota-value", "-v")
+@click.option("--force", "-f")
+def apply_quota_all(quota_name, quota_value, force=False):
+    """
+
+    Apply a quota to all projects in the environment.
+    This will not lower quotas, only raise them.  Use --force to force all quotas to the new setting, even if that would mean lowering a quota.
+
+    quota_name is one of:
+
+    instances
+    ram
+    cores
+    fixed_ips
+    floating_ips
+    injected_file_content_bytes
+    injected_file_path_bytes
+    injected_files
+    key_pairs
+    metadata_items
+    security_groups
+    security_group_rules
+    server_groups
+    server_group_members
+    networks
+    subnets
+    routers
+    root_gb
+
+    quota_value is a number, -1 for unlimited
+
+    """
+    client = p9admin.OpenStackClient()
+
+    if "NOVA_URL" not in os.environ:
+        client.logger.critical("NOVA_URL environment variable must be set.  Check README.rst")
+
+    validators.quota_name(quota_name)
+    validators.quota_value(quota_name, quota_value)
+
+    projects = client.projects()
+
+    for project in projects:
+
+        quota = p9admin.project.get_quota(client, project.id)
+
+        if int(quota_value) == int(json.loads(quota)["quota_set"][quota_name]):
+            print("Quota Already set for project {}".format(project.name.encode('utf-8')))
+            continue
+
+        if int(json.loads(quota)["quota_set"][quota_name]) == -1:
+            print("Quota for project {} set to unlimited, use apply-quota to lower")
+            continue
+
+        if int(quota_value) > int(json.loads(quota)["quota_set"][quota_name]):
+            print("Increasing quota {} from {} to {} on project {}".format(quota_name, json.loads(quota)["quota_set"][quota_name], quota_value, project.name.encode('utf-8')))
+            p9admin.project.apply_quota(client, project.id, quota_name, quota_value)
+        else:
+            if force:
+                print("Forcing application of quota {} to {} on project {}".format(quota_name, quota_value, project.name.encode('utf-8')))
+                p9admin.project.apply_quota(client, project.id, quota_name, quota_value)
+            else:
+                print("Application quota larger than new quota, use force to set lower.")
+
+
 @project.command("apply-quota")
-@click.option("--project_name", "-p")
-@click.option("--quota_name", "-n")
-@click.option("--quota_value", "-v")
+@click.option("--project-name", "-p")
+@click.option("--quota-name", "-n")
+@click.option("--quota-value", "-v")
 def apply_quota(project_name, quota_name, quota_value):
     """
 
@@ -62,14 +131,18 @@ def apply_quota(project_name, quota_name, quota_value):
 
 
     """
+
     client = p9admin.OpenStackClient()
+
+    if "NOVA_URL" not in os.environ:
+        client.logger.critical("NOVA_URL environment variable must be set.  Check README.rst")
+
     project = client.project_by_name(project_name)
-    token = client.api_token()
 
-    p9admin.validators.quota_name(quota_name)
-    p9admin.validators.quota_value(quota_name, quota_value)
+    validators.quota_name(quota_name)
+    validators.quota_value(quota_name, quota_value)
 
-    p9admin.project.apply_quota(token, project.id, quota_name, quota_value)
+    pprint.pprint(p9admin.project.apply_quota(client, project.id, quota_name, quota_value))
 
 
 @project.command("get-quota")
@@ -80,7 +153,7 @@ def get_quota(project_name):
     project = client.project_by_name(project_name)
     token = client.api_token()
 
-    p9admin.project.get_quota(token, project.id)
+    pprint.pprint(p9admin.project.get_quota(token, project.id))
 
 
 @project.command()
@@ -101,15 +174,16 @@ def delete(names):
     for name in names:
         p9admin.project.delete_project(client, name)
 
+
 @project.command("ensure-ldap")
 @click.argument("name")
 @click.option("--group-cn", metavar="CN",
-    help="The name of the group in LDAP. Defaults to NAME.")
+              help="The name of the group in LDAP. Defaults to NAME.")
 @click.option("--uid", "-u", envvar='puppetpass_username')
 @click.option("--password", "-p",
-    prompt=not os.environ.has_key('puppetpass_password'),
-    hide_input=True,
-    default=os.environ.get('puppetpass_password', None))
+              prompt=not os.environ.has_key('puppetpass_password'),
+              hide_input=True,
+              default=os.environ.get('puppetpass_password', None))
 def ensure_ldap(name, group_cn, uid, password):
     """Ensure a project exists based on an LDAP group"""
 

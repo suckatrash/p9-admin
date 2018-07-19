@@ -3,6 +3,7 @@ import json
 import keystoneauth1
 import logging
 import operator
+import os
 import pprint
 import requests
 import sys
@@ -83,38 +84,33 @@ def ensure_project(client, name, assume_complete=True):
 
     return project
 
-def get_quota(token, project_name):
-    nova_url = "https://puppet.platform9.net/nova/v2.1"
-    nova_url = nova_url + "/os-quota-sets/{}".format(project_name)
 
-    header = {'X-AUTH-TOKEN': token, 'Content-Type': 'application/json'}
+def get_quota(client, project_name):
+    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("NOVA_URL"), project_name)
 
-    r = requests.get(nova_url, headers=header, verify=False)
+    header = {'X-AUTH-TOKEN': client.api_token(), 'Content-Type': 'application/json'}
 
-    pprint.pprint(r.text)
+    r = requests.get(nova_url, headers=header, verify=True)
 
-    return r.status_code
+    return r.text
 
 
-def apply_quota(token, project_id, quota_name, quota_value):
+def apply_quota(client, project_id, quota_name, quota_value):
     """
     Apply a quota to an existing project
     """
 
-    nova_url = "https://puppet.platform9.net/nova/v2.1"
-    nova_url = nova_url + "/os-quota-sets/{}".format(project_id)
+    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("NOVA_URL"), project_id)
 
-    print("About to set quota {} to {} on url {}".format(quota_name, quota_value, nova_url))
+    logger.info("About to set quota {} to {} on url {}".format(quota_name, quota_value, nova_url))
 
-    header = {'X-AUTH-TOKEN': token, 'Content-Type': 'application/json'}
+    header = {'X-AUTH-TOKEN': client.api_token(), 'Content-Type': 'application/json'}
     request_body = {"quota_set": {quota_name: quota_value}}
     data_json = json.dumps(request_body, sort_keys=True, indent=4, separators=(',', ': '))
 
-    r = requests.put(nova_url, headers=header, data=data_json, verify=False)
+    r = requests.put(nova_url, headers=header, data=data_json, verify=True)
 
-    pprint.pprint(r.text)
-
-    return r.status_code
+    return r.text
 
 
 def delete_project(client, name):

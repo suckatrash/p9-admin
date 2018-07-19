@@ -84,6 +84,8 @@ the variables correctly:
     fi
 
     export OS_AUTH_URL=https://puppet.platform9.net/keystone/v3
+    export OS_NOVA_URL=https://puppet.platform9.net/nova/v2.1
+
     export OS_IDENTITY_API_VERSION=3
     export OS_REGION_NAME="Portland"
     export OS_USERNAME="$p9_user"

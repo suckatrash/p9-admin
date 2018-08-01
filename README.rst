@@ -129,7 +129,7 @@ On macOS that looks like:
 
     ~ ❯ git clone https://github.com/puppetlabs/p9-admin.git
     ~ ❯ cd p9-admin
-    p9-admin ❯ virtualenv -p python2 .
+    p9-admin ❯ virtualenv .
     p9-admin ❯ source bin/activate
     p9-admin ❯ pip install python-ldap \
       --global-option=build_ext \

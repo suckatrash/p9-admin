@@ -3,10 +3,10 @@ import click
 import json
 import os
 import p9admin
+import p9admin.validators as validators
 import pprint
 import sys
 from time import sleep
-import validators
 
 @click.group()
 def project():
@@ -181,7 +181,7 @@ def delete(names):
               help="The name of the group in LDAP. Defaults to NAME.")
 @click.option("--uid", "-u", envvar='puppetpass_username')
 @click.option("--password", "-p",
-              prompt=not os.environ.has_key('puppetpass_password'),
+              prompt="puppetpass_password" not in os.environ,
               hide_input=True,
               default=os.environ.get('puppetpass_password', None))
 def ensure_ldap(name, group_cn, uid, password):

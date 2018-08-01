@@ -27,29 +27,19 @@ def add_memo(obj, args, memo):
     obj.cache[args] = memo
 
 class OpenStackClient(object):
-    def __init__(self, project_name=None):
+    def __init__(self, project_name=os.environ["OS_PROJECT_NAME"]):
         self.logger = logging.getLogger(__name__)
 
-        if not project_name:
-            project_name = os.environ["OS_PROJECT_NAME"]
-
-        self.logger.info("Authenticating against project {}".format(project_name))
-
-        if os.environ.get("OS_PROTOCOL", "password") == "SAML":
-            self.logger.info('Authenticating as "%s" on project "%s" with SAML',
-                os.environ["OS_USERNAME"], os.environ["OS_PROJECT_NAME"])
-            auth = self.saml().auth()
-        else:
-            self.logger.info('Authenticating as "%s" on project "%s" with password',
-                os.environ["OS_USERNAME"], os.environ["OS_PROJECT_NAME"])
-            auth = keystoneauth1.identity.v3.Password(
-                auth_url=os.environ["OS_AUTH_URL"],
-                username=os.environ["OS_USERNAME"],
-                password=os.environ["OS_PASSWORD"],
-                user_domain_id=os.environ["OS_USER_DOMAIN_ID"],
-                project_name=project_name,
-                project_domain_id=os.environ["OS_PROJECT_DOMAIN_ID"],
-            )
+        self.logger.info('Authenticating as "%s" on project "%s" with password',
+            os.environ["OS_USERNAME"], project_name)
+        auth = keystoneauth1.identity.v3.Password(
+            auth_url=os.environ["OS_AUTH_URL"],
+            username=os.environ["OS_USERNAME"],
+            password=os.environ["OS_PASSWORD"],
+            user_domain_id=os.environ["OS_USER_DOMAIN_ID"],
+            project_name=project_name,
+            project_domain_id=os.environ["OS_PROJECT_DOMAIN_ID"],
+        )
 
         self.session = keystoneauth1.session.Session(auth=auth)
 
@@ -60,10 +50,6 @@ class OpenStackClient(object):
     @memoize
     def openstack(self):
         return openstack.connect(session=self.session)
-
-    @memoize
-    def saml(self):
-        return p9admin.SAML(self)
 
     @memoize
     def api_token(self):

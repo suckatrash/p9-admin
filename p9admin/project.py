@@ -1,7 +1,12 @@
 from __future__ import print_function
+import json
 import keystoneauth1
 import logging
 import operator
+import os
+import pprint
+import requests
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +83,35 @@ def ensure_project(client, name, assume_complete=True):
         sg_rule = client.create_security_group_rule(sg)
 
     return project
+
+
+def get_quota(client, project_name):
+    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("NOVA_URL"), project_name)
+
+    header = {'X-AUTH-TOKEN': client.api_token(), 'Content-Type': 'application/json'}
+
+    r = requests.get(nova_url, headers=header, verify=True)
+
+    return r.text
+
+
+def apply_quota(client, project_id, quota_name, quota_value):
+    """
+    Apply a quota to an existing project
+    """
+
+    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("NOVA_URL"), project_id)
+
+    logger.info("About to set quota {} to {} on url {}".format(quota_name, quota_value, nova_url))
+
+    header = {'X-AUTH-TOKEN': client.api_token(), 'Content-Type': 'application/json'}
+    request_body = {"quota_set": {quota_name: quota_value}}
+    data_json = json.dumps(request_body, sort_keys=True, indent=4, separators=(',', ': '))
+
+    r = requests.put(nova_url, headers=header, data=data_json, verify=True)
+
+    return r.text
+
 
 def delete_project(client, name):
     ### FIXME: images?

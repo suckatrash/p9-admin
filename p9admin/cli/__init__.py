@@ -66,12 +66,10 @@ def repl():
 
 import p9admin.cli.host
 import p9admin.cli.project
-import p9admin.cli.saml
 import p9admin.cli.user
 
 add_command_group(host)
 add_command_group(project)
-add_command_group(saml)
 add_command_group(user)
 
 if __name__ == '__main__':

@@ -17,15 +17,15 @@ setuptools.setup(
         "Intended Audience :: System Administrators",
         "License :: OSI Approved :: BSD License",
         "Natural Language :: English",
-        # pf9-saml-auth is 2.7 only
-        "Programming Language :: Python :: 2 :: Only",
+        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 3",
     ],
 
     packages = setuptools.find_packages(),
     install_requires = [
         "click",
         "openstacksdk",
-        "pf9-saml-auth",
+        "python-keystoneclient",
         "requests",
     ],
 

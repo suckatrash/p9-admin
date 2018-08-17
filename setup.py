@@ -2,14 +2,14 @@ import setuptools
 
 setuptools.setup(
     name = "p9-admin",
-    version = "0.9.0",
+    version = "0.9.2",
 
     description = "Administrative tools for Platform9",
     author = "Daniel Parks",
     author_email = "daniel.parks@puppet.com",
     url = "http://github.com/puppetlabs/p9-admin",
     license = "BSD",
-    long_description = open("README.rst").read(),
+    long_description = open("README.md").read(),
 
     classifiers = [
         "Development Status :: 3 - Alpha",
@@ -26,6 +26,7 @@ setuptools.setup(
         "click",
         "configparser",
         "openstacksdk",
+        "python-glanceclient",
         "python-keystoneclient",
         "python-ldap",
         "requests",

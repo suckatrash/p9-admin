@@ -86,7 +86,7 @@ def ensure_project(client, name, assume_complete=True):
 
 
 def get_quota(client, project_name):
-    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("NOVA_URL"), project_name)
+    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("OS_NOVA_URL"), project_name)
 
     header = {'X-AUTH-TOKEN': client.api_token(), 'Content-Type': 'application/json'}
 
@@ -100,7 +100,7 @@ def apply_quota(client, project_id, quota_name, quota_value):
     Apply a quota to an existing project
     """
 
-    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("NOVA_URL"), project_id)
+    nova_url = "{}/os-quota-sets/{}".format(os.environ.get("OS_NOVA_URL"), project_id)
 
     logger.info("About to set quota {} to {} on url {}".format(quota_name, quota_value, nova_url))
 

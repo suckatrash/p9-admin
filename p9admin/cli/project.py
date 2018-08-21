@@ -66,8 +66,8 @@ def apply_quota_all(quota_name, quota_value, force=False):
     """
     client = p9admin.OpenStackClient()
 
-    if "NOVA_URL" not in os.environ:
-        client.logger.critical("NOVA_URL environment variable must be set.  Check README.rst")
+    if "OS_NOVA_URL" not in os.environ:
+        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.rst")
 
     validators.quota_name(quota_name)
     validators.quota_value(quota_name, quota_value)
@@ -134,8 +134,8 @@ def apply_quota(project_name, quota_name, quota_value):
 
     client = p9admin.OpenStackClient()
 
-    if "NOVA_URL" not in os.environ:
-        client.logger.critical("NOVA_URL environment variable must be set.  Check README.rst")
+    if "OS_NOVA_URL" not in os.environ:
+        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.rst")
 
     project = client.project_by_name(project_name)
 

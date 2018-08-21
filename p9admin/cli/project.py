@@ -149,11 +149,13 @@ def apply_quota(project_name, quota_name, quota_value):
 @click.option("--project_name", "-p")
 def get_quota(project_name):
     """ Get a list of quotas for a project """
+    if "OS_NOVA_URL" not in os.environ:
+        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.rst")
+
     client = p9admin.OpenStackClient()
     project = client.project_by_name(project_name)
-    token = client.api_token()
 
-    pprint.pprint(p9admin.project.get_quota(token, project.id))
+    pprint.pprint(p9admin.project.get_quota(client, project.id))
 
 
 @project.command()

@@ -36,9 +36,9 @@ class OpenStackClient(object):
             auth_url=os.environ["OS_AUTH_URL"],
             username=os.environ["OS_USERNAME"],
             password=os.environ["OS_PASSWORD"],
-            user_domain_id=os.environ["OS_USER_DOMAIN_ID"],
+            user_domain_id=os.environ.get("OS_USER_DOMAIN_ID", "default"),
             project_name=project_name,
-            project_domain_id=os.environ["OS_PROJECT_DOMAIN_ID"],
+            project_domain_id=os.environ.get("OS_PROJECT_DOMAIN_ID", "default"),
         )
 
         self.session = keystoneauth1.session.Session(auth=auth)

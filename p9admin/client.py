@@ -182,52 +182,47 @@ class OpenStackClient(object):
                 user.user.name, user.user.id)
         return user.user
 
-    def find_group(self, name):
-        try:
-            return self.keystone().groups.find(name=name)
-        except keystoneauth1.exceptions.http.NotFound:
-            return None
+    def ensure_users(self, users):
+        for user in users:
+            project = p9admin.project.ensure_project(self, user.name)
+            user.user = self.ensure_user(user, default_project=project)
+            self.grant_project_access(project, user=user.user)
 
-    def ensure_group(self, name):
-        group = self.find_group(name)
-        if group is not None:
-            self.logger.info('Found group "%s" [%s]', group.name, group.id)
-        else:
-            group = self.keystone().groups.create(name=name)
-            self.logger.info('Created group "%s" [%s]', group.name, group.id)
-        return group
+    def ensure_project_members(self, project, ensure_user_ids, role_name="_member_", keep_others=False):
+        role = self.role(role_name)
 
-    def ensure_group_members(self, group, ensure_users, keep_others=False):
-        existing_users = self.keystone().users.list(group=group)
-        existing_users = set([u.id for u in existing_users])
-        ensure_users = set([u.id for u in ensure_users])
+        role_assignments = self.keystone().role_assignments.list(project=project)
+        existing_user_ids = set([u.user["id"] for u in role_assignments])
+        ensure_user_ids = set(ensure_user_ids)
 
-        to_add = ensure_users - existing_users
+        to_add = ensure_user_ids - existing_user_ids
 
         if keep_others:
             to_delete = set()
-            unchanged = existing_users
+            unchanged = existing_user_ids
         else:
-            to_delete = existing_users - ensure_users
-            unchanged = ensure_users & existing_users
+            to_delete = existing_user_ids - ensure_user_ids
+            unchanged = ensure_user_ids & existing_user_ids
 
         for user_id in to_add:
-            self.keystone().users.add_to_group(user_id, group)
-            self.logger.debug('Added user [%s] to group "%s" [%s]',
-                user_id, group.name, group.id)
+            self.keystone().roles.grant(role.id, user=user_id, project=project)
+            self.logger.info(
+                'Granted user [%s] access to project "%s" with role "%s" [%s]',
+                user_id, project.name, role.name, role.id)
 
         for user_id in to_delete:
-            self.keystone().users.remove_from_group(user_id, group)
-            self.logger.debug('Deleted user [%s] from group "%s" [%s]',
-                user_id, group.name, group.id)
+            self.keystone().roles.revoke(role.id, user=user_id, project=project)
+            self.logger.info(
+                'Revoked user [%s] access to project "%s" with role "%s" [%s]',
+                user_id, project.name, role.name, role.id)
 
         for user_id in unchanged:
-            self.logger.debug('Leaving user [%s] in group "%s" [%s]',
-                user_id, group.name, group.id)
+            self.logger.debug('Leaving user [%s] in project "%s" [%s]',
+                user_id, project.name, project.id)
 
         self.logger.info(
-            'Updating group "%s" [%s] members: +%d -%d (%d unchanged)',
-            group.name, group.id, len(to_add), len(to_delete), len(unchanged))
+            'Updating project "%s" [%s] members: +%d -%d (%d unchanged)',
+            project.name, project.id, len(to_add), len(to_delete), len(unchanged))
 
     def grant_project_access(self, project, user=None, group=None, role_name="_member_"):
         if user is None and group is not None:

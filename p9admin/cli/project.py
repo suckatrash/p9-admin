@@ -196,25 +196,18 @@ def ensure_ldap(name, group_cn, uid, password):
         group_cn = name
 
     client = p9admin.OpenStackClient()
-    client.logger.info("Ensuring all users exist and have their own projects")
-
-    ### FIXME this is common code with user.ensure_users
-    p9Users = p9admin.user.get_ldap_group_users(group_cn, uid, password)
-    if not p9Users:
-        sys.exit("LDAP group {} doesn't contain any users".format(group_cn))
-
-    for p9User in p9Users:
-        project = p9admin.project.ensure_project(client, p9User.name)
-        client.ensure_user(p9User, default_project=project)
-        client.grant_project_access(project, user=p9User.user)
-
-    client.logger.info("Ensuring group exists and has the correct members")
-    group = client.ensure_group(name)
-    users = [p9User.user for p9User in p9Users]
-    client.ensure_group_members(group, users, keep_others=False)
 
     client.logger.info("Ensuring actual project exists")
     project = p9admin.project.ensure_project(client, name)
-    client.grant_project_access(project, group=group)
+
+    client.logger.info("Ensuring all users exist and have their own projects")
+
+    users = p9admin.user.get_ldap_group_users(group_cn, uid, password)
+    if not users:
+        sys.exit("LDAP group {} doesn't contain any users".format(group_cn))
+
+    client.ensure_users(users)
+    user_ids = [user.user.id for user in users]
+    client.ensure_project_members(project, user_ids, keep_others=False)
 
     print('Project "{}" [{}]'.format(project.name, project.id))

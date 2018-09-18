@@ -122,9 +122,12 @@ def delete_project(client, name):
         client.openstack().compute.delete_server(server, force=True, ignore_missing=True)
         logger.info('  Deleted server "%s" [%s]', server.name, server.id)
 
-    for volume in client.volumes(project_id=project.id):
-        client.openstack().block_storage.delete_volume(volume, ignore_missing=True)
-        logger.info('  Deleted volume "%s" [%s]', volume.name, volume.id)
+    try:
+        for volume in client.volumes(project_id=project.id):
+            client.openstack().block_storage.delete_volume(volume, ignore_missing=True)
+            logger.info('  Deleted volume "%s" [%s]', volume.name, volume.id)
+    except keystoneauth1.exceptions.catalog.EndpointNotFound:
+        logger.warn("No volume endpoint")
 
     network_client = client.openstack().network
     routers = network_client.routers(project_id=project.id)
@@ -190,9 +193,12 @@ def show_project(client, name):
         for sg_rule in sorted(sg_rules, key=sort_key_func):
             print_security_group_rule(client, sg_rule)
 
-    for volume in client.volumes(project_id=project.id):
-        print('  Volume "{}" [{}] {} GB, {}'.format(
-            volume.name, volume.id, volume.size, volume.status))
+    try:
+        for volume in client.volumes(project_id=project.id):
+            print('  Volume "{}" [{}] {} GB, {}'.format(
+                volume.name, volume.id, volume.size, volume.status))
+    except keystoneauth1.exceptions.catalog.EndpointNotFound:
+        logger.warn("No volume endpoint")
 
     for server in client.servers(project_id=project.id):
         print('  Server "{}" [{}] {}'.format(

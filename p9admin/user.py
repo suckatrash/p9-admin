@@ -102,7 +102,11 @@ def get_ldap_users(filter, uid, password):
             if len(mails) > 1:
                 logger.warn("%s has %d mail values", dn, len(mails))
 
-            user_objects.append(p9admin.User(cns[0], mails[0], number=count))
+            # Values are returned as bytes.
+            cn = cns[0].decode("utf-8")
+            mail = mails[0].decode("utf-8")
+
+            user_objects.append(p9admin.User(cn, mail, number=count))
             count += 1
 
         return user_objects

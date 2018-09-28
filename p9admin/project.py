@@ -1,4 +1,5 @@
 from __future__ import print_function
+import configparser
 import json
 import keystoneauth1
 import logging
@@ -113,6 +114,20 @@ def apply_quota(client, project_id, quota_name, quota_value):
     return r.text
 
 
+def apply_quota_defaults(client, project_id):
+    """
+    Apply a quota to an existing project
+    """
+    config = configparser.ConfigParser()
+    config.read('conf/defaults.ini')
+
+    for key in config["DEFAULT"]:
+        logger.debug("Applying key {} with value {}".format(key, config["DEFAULT"][key]))
+        retval = apply_quota(client, project_id, key, config["DEFAULT"][key]) + "\n"
+
+    return retval
+
+
 def delete_project(client, name):
     ### FIXME: images?
     project = client.find_project(name)
@@ -162,6 +177,7 @@ def delete_project(client, name):
 
     logger.info('  Finished deleting project')
 
+
 def show_project(client, name):
     ### FIXME: images?
     project = client.find_project(name)
@@ -204,6 +220,7 @@ def show_project(client, name):
         print('  Server "{}" [{}] {}'.format(
             server.name, server.id, server.status))
 
+
 def print_fixed_ips(client, fixed_ips):
     for ip in fixed_ips:
         subnet = client.subnet(ip["subnet_id"])
@@ -239,3 +256,30 @@ def print_security_group_rule(client, rule):
     print("    {} {} {} {} on {}".format(
         rule.ether_type, protocol, direction, remote,
         port_range))
+
+
+def verified_apply_quota_defaults(client, project):
+    """ Apply defaults quotas, verifying that the quota won't be lowered first """
+    config = configparser.ConfigParser()
+    config.read('conf/defaults.ini')
+
+    for key in config["DEFAULT"]:
+        logger.debug("Applying key {} with value {} to project {}".format(key, config["DEFAULT"][key], project.name))
+        verified_apply_quota(client, project, key, config["DEFAULT"][key])
+
+
+def verified_apply_quota(client, project, quota_name, quota_value, force=False):
+    quota = get_quota(client, project.id)
+    if int(quota_value) == int(json.loads(quota)["quota_set"][quota_name]):
+        logger.info("Quota already set for project {}".format(project.name))
+        return
+
+    if int(json.loads(quota)["quota_set"][quota_name]) == -1:
+        logger.info("Quota for project {} set to unlimited, use apply-quota to lower")
+        return
+
+    if int(quota_value) > int(json.loads(quota)["quota_set"][quota_name]):
+        logger.info("Increasing quota {} from {} to {} on project {}".format(quota_name, json.loads(quota)["quota_set"][quota_name], quota_value, project.name))
+        apply_quota(client, project.id, quota_name, quota_value)
+    else:
+        logger.info("Application quota larger than new quota, use apply-quota to set lower.")

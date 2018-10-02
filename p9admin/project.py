@@ -11,6 +11,11 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+def _attrgetter(*attrs):
+    def _key(object):
+        return [str(getattr(object, attr)) for attr in attrs]
+    return _key
+
 def ensure_project(client, name, assume_complete=True):
     """
     Ensure that a project and the standard resources exist
@@ -201,7 +206,7 @@ def show_project(client, name):
     for sg in client.security_groups(project_id=project.id):
         print('  Security group "{}" [{}]'.format(sg.name, sg.id))
 
-        sort_key_func = operator.attrgetter(
+        sort_key_func = _attrgetter(
             "direction", "ether_type", "protocol", "remote_group_id",
             "remote_ip_prefix", "port_range_min", "port_range_max")
 

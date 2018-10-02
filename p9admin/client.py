@@ -314,19 +314,6 @@ class OpenStackClient(object):
             description="Default router",
             external_gateway_info={"network_id": self.external_network().id})
         self.logger.info('Created router "%s" [%s]', router.name, router.id)
-
-        port = self.openstack().network.create_port(
-            project_id=project.id,
-            network_id=network.id,
-            fixed_ips=[
-                {"subnet_id": subnet.id, "ip_address": subnet.gateway_ip}
-            ])
-        self.logger.info("Created port [%s] on tenant subnet", port.id)
-
-        self.openstack().network.add_interface_to_router(
-            router, subnet_id=subnet.id, port_id=port.id)
-        self.logger.info("Added port to router")
-
         return router
 
     def find_security_group(self, project, name):

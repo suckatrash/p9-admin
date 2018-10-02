@@ -17,9 +17,14 @@ def project():
 @project.command()
 @click.argument("name")
 def ensure(name):
-    """Ensure a project exists"""
+    """
+    Ensure a project exists
+
+    This will also ensure that the networks and other objects that should exist
+    within the project do actually exist.
+    """
     client = p9admin.OpenStackClient()
-    project = p9admin.project.ensure_project(client, name)
+    project = p9admin.project.ensure_project(client, name, assume_complete=False)
     print('Project "{}" [{}]'.format(project.name, project.id))
 
 

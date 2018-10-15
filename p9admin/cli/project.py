@@ -13,6 +13,39 @@ def project():
     """Manage projects"""
     pass
 
+@project.command()
+def portlist():
+    """
+    List all projects with reserved_dhcp_port stats
+
+    device_id=reserved_dhcp_port is bad since they make DHCP include a bad
+    nameserver in its response.
+    """
+    client = p9admin.OpenStackClient()
+    for network in client.openstack().network.networks(name="network1"):
+        reserved = 0
+        all = 0
+        for port in client.openstack().network.ports(network_id=network.id):
+            if port.device_id == "reserved_dhcp_port":
+                reserved += 1
+            all += 1
+        if reserved != 1:
+            all = str(all) + " **"
+        print("{} {}/{}".format(network.id, reserved, all))
+
+@project.command()
+def cleanports():
+    """
+    List all projects with reserved_dhcp_port stats
+
+    device_id=reserved_dhcp_port is bad since they make DHCP include a bad
+    nameserver in its response.
+    """
+    client = p9admin.OpenStackClient()
+    for port in client.openstack().network.ports(device_id="reserved_dhcp_port"):
+        print("Deleting port {} on network {}".format(port.id, port.network_id))
+        client.openstack().network.delete_port(port)
+
 
 @project.command()
 @click.argument("name")

@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name = "p9-admin",
-    version = "0.0.2",
+    version = "0.9.0",
 
     description = "Administrative tools for Platform9",
     author = "Daniel Parks",

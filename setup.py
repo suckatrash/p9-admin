@@ -27,6 +27,7 @@ setuptools.setup(
         "openstacksdk",
         "python-keystoneclient",
         "requests",
+        "configparser",
     ],
 
     include_package_data = True,

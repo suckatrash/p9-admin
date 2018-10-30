@@ -4,7 +4,8 @@ Administer Puppet's Platform9 environment
 This is used to administer Puppet's internal Platform9 environment. It requires
 admin access.
 
-For installation information, see the “Installing” section at bottom.
+For installation information, see the “Installing and upgrading” section at
+bottom. If you want to work on this tool itself, see the “Developing” section.
 
 
 Common tasks
@@ -111,15 +112,30 @@ Example usage:
       . . .
 
 
-Installing
+Installing and upgrading
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The easiest way to install or upgrade this is to use ``pip``. Note that if you
+wish to do development on this tool, you should skip this and follow the
+instructions under “Developing” below.
+
+~~~
+.. code::
+
+    pip install \
+      --upgrade \
+      --extra-index-url https://artifactory.delivery.puppetlabs.net/artifactory/api/pypi/pypi/simple \
+      p9-admin
+
+
+Developing
 ~~~~~~~~~~
 
-The easiest way to install this is:
+To get this set up for development:
 
 1. Clone this repo locally
 2. Create a virtualenv for it
-3. Install ``python-ldap`` (see below)
-4. Run ``python setup.py develop``
+3. Run ``python setup.py develop``
 
 You will then be able to ``p9-admin`` directly from within the virtualenv.
 
@@ -131,19 +147,4 @@ On macOS that looks like:
     ~ ❯ cd p9-admin
     p9-admin ❯ virtualenv .
     p9-admin ❯ source bin/activate
-    p9-admin ❯ pip install python-ldap \
-      --global-option=build_ext \
-      --global-option="-I$(xcrun --show-sdk-path)/usr/include/sasl"
     p9-admin ❯ python setup.py develop
-
-LDAP
-----
-
-If you wish to use LDAP search, you must install ``python-ldap``. Unfortunately,
-it requires an extra step on macOS:
-
-.. code:: sh
-
-    pip install python-ldap \
-      --global-option=build_ext \
-      --global-option="-I$(xcrun --show-sdk-path)/usr/include/sasl"

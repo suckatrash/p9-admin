@@ -8,7 +8,7 @@ import sys
 
 @click.group()
 def user():
-    """Manage local users"""
+    """Manage local users."""
     pass
 
 
@@ -22,7 +22,7 @@ def role_name(is_admin):
 @click.argument("name")
 @click.argument("email")
 def ensure_user(name, email):
-    """Ensure that a local user is all set up"""
+    """Ensure that a user is all set up."""
     client = p9admin.OpenStackClient()
     client.ensure_users([p9admin.User(name, email)])
 
@@ -35,7 +35,7 @@ def ensure_user(name, email):
               hide_input=True,
               default=os.environ.get('puppetpass_password', None))
 def ensure_ldap_users(filter, uid, password):
-    """Ensure that local users are set up based on an LDAP filter"""
+    """Ensure that users are set up based on an LDAP filter."""
     if not uid:
         sys.exit("You must specify --uid USER to connect to LDAP")
 
@@ -50,7 +50,7 @@ def ensure_ldap_users(filter, uid, password):
 @click.argument("project")
 @click.option("--admin/--member", default=False)
 def grant_user(email, project, admin):
-    """Grant a local user access to a project"""
+    """Grant a user access to a project."""
     client = p9admin.OpenStackClient()
 
     user = client.find_user(email)
@@ -66,7 +66,7 @@ def grant_user(email, project, admin):
 @click.argument("project")
 @click.option("--admin/--member", default=False)
 def revoke_user(email, project, admin):
-    """Revoke a local user's access to a project"""
+    """Revoke a user's access to a project."""
     client = p9admin.OpenStackClient()
 
     user = client.find_user(email)

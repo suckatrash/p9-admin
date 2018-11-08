@@ -10,7 +10,7 @@ from time import sleep
 
 @click.group()
 def project():
-    """Manage projects"""
+    """Manage projects."""
     pass
 
 
@@ -18,7 +18,7 @@ def project():
 @click.argument("name")
 def ensure(name):
     """
-    Ensure a project exists
+    Ensure a project exists.
 
     This will also ensure that the networks and other objects that should exist
     within the project do actually exist.
@@ -31,7 +31,7 @@ def ensure(name):
 @project.command()
 @click.argument("name")
 def show(name):
-    """Show a project and the objects within"""
+    """Show a project and the objects within."""
     p9admin.project.show_project(p9admin.OpenStackClient(), name)
 
 
@@ -42,9 +42,10 @@ def show(name):
 @click.option("--defaults/--no-defaults", default=False)
 def apply_quota_all(quota_name, quota_value, force=False, defaults=False):
     """
-
     Apply a quota to all projects in the environment.
-    This will not lower quotas, only raise them.  Use --force to force all quotas to the new setting, even if that would mean lowering a quota.
+
+    This will not lower quotas, only raise them.  Use --force to force all
+    quotas to the new setting, even if that would mean lowering a quota.
 
     quota_name is one of:
 
@@ -68,8 +69,8 @@ def apply_quota_all(quota_name, quota_value, force=False, defaults=False):
     root_gb
 
     quota_value is a number, -1 for unlimited
-
     """
+
     client = p9admin.OpenStackClient()
     projects = client.projects()
 
@@ -97,8 +98,7 @@ def apply_quota_all(quota_name, quota_value, force=False, defaults=False):
 @click.option("--defaults/--no-defaults", default=False)
 def apply_quota(project_name, quota_name, quota_value, defaults):
     """
-
-    Apply a quota to a project
+    Apply a quota to a project.
 
     quota_name is one of:
 
@@ -122,8 +122,6 @@ def apply_quota(project_name, quota_name, quota_value, defaults):
     root_gb
 
     quota_value is a number, -1 for unlimited
-
-
     """
 
     client = p9admin.OpenStackClient()
@@ -148,7 +146,7 @@ def apply_quota(project_name, quota_name, quota_value, defaults):
 @project.command("get-quota")
 @click.option("--project_name", "-p")
 def get_quota(project_name):
-    """ Get a list of quotas for a project """
+    """Get a list of quotas for a project."""
     if "OS_NOVA_URL" not in os.environ:
         sys.exit("OS_NOVA_URL environment variable must be set.  Check README.rst")
 
@@ -160,7 +158,7 @@ def get_quota(project_name):
 
 @project.command()
 def list():
-    """ Get a list of projects """
+    """Get a list of projects."""
     client = p9admin.OpenStackClient()
     projects = client.projects()
 
@@ -171,7 +169,7 @@ def list():
 @project.command()
 @click.argument("names", metavar="NAME [NAME ...]", nargs=-1)
 def delete(names):
-    """Delete project(s) and the objects within"""
+    """Delete project(s) and the objects within."""
     client = p9admin.OpenStackClient()
     for name in names:
         p9admin.project.delete_project(client, name)
@@ -187,7 +185,7 @@ def delete(names):
               hide_input=True,
               default=os.environ.get('puppetpass_password', None))
 def ensure_ldap(name, group_cn, uid, password):
-    """Ensure a project exists based on an LDAP group"""
+    """Ensure a project exists based on an LDAP group."""
 
     if not uid:
         sys.exit("You must specify --uid USER to connect to LDAP")

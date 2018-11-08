@@ -56,7 +56,11 @@ def cli(verbose, debug, openstack_debug):
 
 @cli.command("repl")
 def repl():
-    """Drop into interactive Python REPL"""
+    """
+    Drop into interactive Python REPL.
+
+    An instance of p9admin.OpenStackClient() will be available as "client".
+    """
     client = p9admin.OpenStackClient()
 
     import code

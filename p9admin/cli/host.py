@@ -7,13 +7,13 @@ import sys
 
 @click.group()
 def host():
-    """Tools for hypervisors"""
+    """Tools for hypervisors."""
     pass
 
 @host.command()
 @click.option("--format", "-f", default="table")
 def list(format):
-    """List hosts"""
+    """List hosts."""
     hosts = p9admin.OpenStackClient().openstack().list_hypervisors()
     hosts = sorted(hosts, key=operator.itemgetter("hypervisor_hostname"))
 

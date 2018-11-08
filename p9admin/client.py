@@ -14,6 +14,7 @@ class TooManyError(Exception):
     pass
 
 def memoize(obj):
+    # This does not work with generators.
     cache = obj.cache = {}
 
     @functools.wraps(obj)
@@ -83,7 +84,7 @@ class OpenStackClient(object):
 
     @memoize
     def role(self, name):
-        return self.keystone().roles.find(name=name)
+        return list(self.keystone().roles.find(name=name))
 
     @memoize
     def service_project(self):
@@ -134,7 +135,7 @@ class OpenStackClient(object):
 
     @memoize
     def all_volumes(self):
-        return self.openstack().block_storage.volumes(details=True, all_tenants=True)
+        return list(self.openstack().block_storage.volumes(details=True, all_tenants=True))
 
     def volumes(self, project_id):
         for volume in self.all_volumes():
@@ -143,7 +144,7 @@ class OpenStackClient(object):
 
     @memoize
     def all_servers(self):
-        return self.openstack().compute.servers(details=True, all_tenants=True)
+        return list(self.openstack().compute.servers(details=True, all_tenants=True))
 
     def servers(self, project_id):
         for server in self.all_servers():

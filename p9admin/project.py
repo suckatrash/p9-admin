@@ -263,6 +263,41 @@ def print_security_group_rule(client, rule):
         port_range))
 
 
+def get_stats(client, project):
+    """
+    Get statistics about a project
+
+    Return (count_servers, count_servers_on, count_volumes, size_volumes,
+        count_volumes_inuse, size_volumes_inuse)
+    """
+
+    ### FIXME: images?
+    servers = [[0, 0]]
+    for server in client.servers(project_id=project.id):
+        if server.power_state > 0:
+            count_powered = 1
+        else:
+            count_powered = 0
+
+        servers.append([1, count_powered])
+
+    volumes = [[0, 0, 0, 0]]
+    try:
+        for volume in client.volumes(project_id=project.id):
+            if volume.status == "in-use":
+                size_inuse = volume.size
+                count_inuse = 1
+            else:
+                size_inuse = 0
+                count_inuse = 0
+
+            volumes.append((1, volume.size, count_inuse, size_inuse))
+    except keystoneauth1.exceptions.catalog.EndpointNotFound:
+        logger.warn("No volume endpoint")
+
+    return list(map(sum, zip(*servers))) + list(map(sum, zip(*volumes)))
+
+
 def verified_apply_quota_defaults(client, project):
     """ Apply defaults quotas, verifying that the quota won't be lowered first """
     config = configparser.ConfigParser()

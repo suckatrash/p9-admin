@@ -1,5 +1,6 @@
 from __future__ import print_function
 import click
+import csv
 import json
 import os
 import p9admin
@@ -209,3 +210,30 @@ def ensure_ldap(name, group_cn, uid, password):
     client.ensure_project_members(project, user_ids, keep_others=False)
 
     print('Project "{}" [{}]'.format(project.name, project.id))
+
+
+@project.command()
+def stats():
+    """
+    Get information about usage of all projects.
+
+    This outputs CSV.
+    """
+    client = p9admin.OpenStackClient()
+    projects = client.projects()
+
+    writer = csv.writer(sys.stdout)
+    writer.writerow([
+        "project_id",
+        "project_name",
+        "count_servers",
+        "count_servers_on",
+        "count_volumes",
+        "size_volumes",
+        "count_volumes_inuse",
+        "size_volumes_inuse",
+    ])
+
+    for project in projects:
+        stats = p9admin.project.get_stats(client, project)
+        writer.writerow([project.id, project.name] + stats)

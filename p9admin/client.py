@@ -1,5 +1,6 @@
 from __future__ import print_function
 import functools
+import glanceclient.v2
 import keystoneclient.v3
 import keystoneauth1
 import keystoneauth1.identity
@@ -42,6 +43,10 @@ class OpenStackClient(object):
         )
 
         self.session = keystoneauth1.session.Session(auth=auth)
+
+    @memoize
+    def glance(self):
+        return glanceclient.v2.client.Client(session=self.session)
 
     @memoize
     def keystone(self):

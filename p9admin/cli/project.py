@@ -76,7 +76,7 @@ def apply_quota_all(quota_name, quota_value, force=False, defaults=False):
     projects = client.projects()
 
     if "OS_NOVA_URL" not in os.environ:
-        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.rst")
+        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.md")
 
     client.logger.info("Starting application of quotas to all projects")
 
@@ -128,7 +128,7 @@ def apply_quota(project_name, quota_name, quota_value, defaults):
     client = p9admin.OpenStackClient()
 
     if "OS_NOVA_URL" not in os.environ:
-        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.rst")
+        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.md")
 
     project = client.project_by_name(project_name)
 
@@ -149,7 +149,7 @@ def apply_quota(project_name, quota_name, quota_value, defaults):
 def get_quota(project_name):
     """Get a list of quotas for a project."""
     if "OS_NOVA_URL" not in os.environ:
-        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.rst")
+        sys.exit("OS_NOVA_URL environment variable must be set.  Check README.md")
 
     client = p9admin.OpenStackClient()
     project = client.project_by_name(project_name)

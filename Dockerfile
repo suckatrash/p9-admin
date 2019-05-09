@@ -6,12 +6,16 @@
 # tags from Docker Hub.
 FROM python:alpine
 
-LABEL Name=p9-admin Version=0.0.1 
+LABEL Name=p9-admin Version=0.9.3
 
 WORKDIR /app
 ADD . /app
 
-RUN apk add --no-cache gcc libc-dev libffi-dev linux-headers openldap-dev
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache g++ gcc libc-dev libffi-dev linux-headers openldap-dev yaml-dev && \
+    python3 -m pip install --upgrade pip && \
+    python3 -m pip install --upgrade setuptools wheel twine
 
 RUN python3 setup.py build
 RUN python3 setup.py install

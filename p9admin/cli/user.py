@@ -45,6 +45,23 @@ def ensure_ldap_users(filter, uid, password):
     client.ensure_users(users)
 
 
+@user.command("get-ldap-group-users")
+@click.argument("group")
+@click.option("--uid", "-u", envvar='puppetpass_username')
+@click.option("--password", "-p",
+              prompt='puppetpass_password' not in os.environ,
+              hide_input=True,
+              default=os.environ.get('puppetpass_password', None))
+def get_ldap_group_users(group, uid, password):
+    """List the members of an LDAP group"""
+
+    if not uid:
+        sys.exit("You must specify --uid USER to connect to LDAP")
+
+    users = p9admin.user.get_ldap_group_users(group, uid, password)
+    print(users)
+
+
 @user.command("grant-user")
 @click.argument("email")
 @click.argument("project")

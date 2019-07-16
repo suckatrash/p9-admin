@@ -286,7 +286,8 @@ class OpenStackClient(object):
     def create_network(self, project, name):
         network = self.openstack().network.create_network(
             project_id=project.id, name=name,
-            description="Default network")
+            description="Default network",
+            mtu=1500)
         self.logger.info('Created network "%s" [%s]', network.name, network.id)
         return network
 

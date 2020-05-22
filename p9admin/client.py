@@ -89,7 +89,7 @@ class OpenStackClient(object):
 
     @memoize
     def role(self, name):
-        return list(self.keystone().roles.find(name=name))
+        return self.keystone().roles.find(name=name)
 
     @memoize
     def service_project(self):

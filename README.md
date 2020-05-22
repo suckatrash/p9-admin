@@ -37,7 +37,7 @@ Everybody in the company should already have a user. However, when somebody
 joins the company you'll need to create a new account for them:
 
 ```
-p9-admin -v user ensure-ldap-users uid=happy.noob
+p9-admin -v user ensure-ldap-users uid=happy.noob --uid=my_ldap_uid
 ```
 
 That will load the user's information from LDAP, then create a user and project
@@ -120,8 +120,8 @@ p9-admin
 
 ## Using via Docker
 
-If you wish to use p9-admin via `docker run` you can do so by wither building
-the contaner locally or by pulling it from our internal registry like so:
+If you wish to use p9-admin via `docker run` you can do so by either building
+the container locally or by pulling it from our internal registry like so:
 
 ```
 source creds-platform9-service.sh
